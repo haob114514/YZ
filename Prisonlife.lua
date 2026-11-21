@@ -22306,16 +22306,16 @@ Options.PubgKillMsgDuration = KillMsgGroup:AddSlider('PubgKillMsgDuration', {
     Text = '停留时长（秒）', Default = 3, Min = 1, Max = 8, Rounding = 1, Compact = false
 })
 
--- 掩体描边（范围内墙体 / 掩体高亮描边，暗地图也能看清地形）
-local CoverGroup = Tabs.Visuals:AddLeftGroupbox('掩体描边')
+-- 掩体迷雾（脚下雾圈 + 圈内描边，靠近才显示）
+local CoverGroup = Tabs.Visuals:AddLeftGroupbox('掩体迷雾')
 
 Toggles.CoverOutline = CoverGroup:AddToggle('CoverOutline', {
-    Text = '启用掩体描边',
+    Text = '启用掩体迷雾',
     Default = false,
-    Tooltip = '把周围一定范围内的墙体 / 掩体描边（透视显示），暗处也能看清地形',
+    Tooltip = '在脚下生成一圈迷雾，圈内墙体越近越清晰、到边缘逐渐消失',
 })
 Options.CoverOutlineRange = CoverGroup:AddSlider('CoverOutlineRange', {
-    Text = '范围（格）', Default = 60, Min = 10, Max = 250, Rounding = 0, Compact = false,
+    Text = '迷雾半径（格）', Default = 60, Min = 10, Max = 250, Rounding = 0, Compact = false,
 })
 Options.CoverOutlineCount = CoverGroup:AddSlider('CoverOutlineCount', {
     Text = '最多描边数量', Default = 24, Min = 5, Max = 120, Rounding = 0, Compact = false,
@@ -22333,9 +22333,13 @@ Toggles.CoverOutlineThroughWall = CoverGroup:AddToggle('CoverOutlineThroughWall'
     Default = false,
     Tooltip = '关：只描看得见的掩体（不穿墙）；开：隔墙也显示描边',
 })
+Options.CoverFogOpacity = CoverGroup:AddSlider('CoverFogOpacity', {
+    Text = '雾圈浓度', Default = 80, Min = 10, Max = 100, Rounding = 0, Suffix = ' %', Compact = false,
+    Tooltip = '脚下那圈雾的明显程度（越高越像一圈实体光带）',
+})
 do
-    local L = CoverGroup:AddLabel('描边颜色')
-    L:AddColorPicker('CoverOutlineColor', { Default = Color3.fromRGB(130, 205, 255), Title = '描边颜色' })
+    local L = CoverGroup:AddLabel('描边 / 雾圈颜色')
+    L:AddColorPicker('CoverOutlineColor', { Default = Color3.fromRGB(130, 205, 255), Title = '描边 / 雾圈颜色' })
 end
 
 -- ====================== MOVEMENT ======================
@@ -26284,6 +26288,183 @@ local hitsoundIds = {
     ['NL'] = 82938206376993,
 }
 
+-- ====================== 本地音效（可自己加） ======================
+-- 把 .mp3 / .ogg 文件丢进执行器工作目录下的 YZ_HUB/sounds 文件夹即可（文件名就是下拉里的名字）
+-- 例：YZ_HUB/sounds/我的命中.mp3  →  下拉里出现「我的命中」
+local localSounds = {}
+local SOUND_FOLDER = 'YZ_HUB/sounds'
+
+-- 音效文件夹：默认是执行器工作目录下的 YZ_HUB/sounds，
+-- 也可以在菜单里填绝对路径（能不能读取决于执行器是否允许访问工作目录以外的文件）
+local function getSoundFolder()
+    -- 固定使用执行器工作目录下的 YZ_HUB/sounds（自定义路径输入框已移除）
+    return SOUND_FOLDER
+end
+
+local function scanLocalSounds()
+    table.clear(localSounds)
+    if not (listfiles and isfolder and getcustomasset) then
+        return 0
+    end
+
+    -- 手机执行器的工作目录各不相同，这里挨个试；
+    -- 都不存在时尝试自动创建 YZ_HUB/sounds（有 makefolder 才行）
+    local custom = getSoundFolder()
+    local candidates = {
+        custom,
+        'YZ_HUB/sounds',
+        -- Android 常见执行器工作目录
+        '/sdcard/Delta/workspace/YZ_HUB/sounds',
+        '/storage/emulated/0/Delta/workspace/YZ_HUB/sounds',
+        '/sdcard/Delta/YZ_HUB/sounds',
+        '/storage/emulated/0/Delta/YZ_HUB/sounds',
+        '/sdcard/Xeno/workspace/YZ_HUB/sounds',
+        '/sdcard/Fluxus/workspace/YZ_HUB/sounds',
+        '/sdcard/Arceus/workspace/YZ_HUB/sounds',
+        '/sdcard/Wave/workspace/YZ_HUB/sounds',
+        -- 直接放在内部存储根目录
+        '/sdcard/YZ_HUB/sounds',
+        '/storage/emulated/0/YZ_HUB/sounds',
+        -- PC 执行器（Potassium / Real / Mad）多数把 workspace 放在脚本同级，
+        -- 统一先试相对路径，再试常见安装目录下的 workspace
+        '/storage/emulated/0/Documents/YZ_HUB/sounds',
+    }
+
+    local folder = nil
+    local tried = {}
+    for _, path in ipairs(candidates) do
+        if path and path ~= '' then
+            local okF, isf = pcall(function()
+                return isfolder(path)
+            end)
+            if okF and isf then
+                folder = path
+                break
+            end
+            if not tried[path] then
+                tried[path] = true
+            end
+        end
+    end
+
+    if not folder and makefolder then
+        pcall(makefolder, 'YZ_HUB')
+        pcall(makefolder, 'YZ_HUB/sounds')
+        local okF, isf = pcall(function()
+            return isfolder('YZ_HUB/sounds')
+        end)
+        if okF and isf then
+            folder = 'YZ_HUB/sounds'
+        end
+    end
+
+    if not folder then
+        local list = {}
+        for path in pairs(tried) do
+            list[#list + 1] = path
+        end
+        table.sort(list)
+        return 0, 0, nil, table.concat(list, ' / ')
+    end
+
+    local ok, files = pcall(function()
+        return listfiles(folder)
+    end)
+    if not ok or type(files) ~= 'table' then
+        return 0
+    end
+
+    -- 先把 .vsnd_c / .vsnd 里能抠出来的音频流转存成 .ogg/.mp3
+    -- （Source2 的 vsnd_c 只是容器，真正的 Vorbis/MP3 数据流嵌在里面；
+    --   如果这个 vsnd_c 是 VPK 里那种只有元数据的，抠不出来，需要先用工具转）
+    local carved = 0
+    if readfile and writefile then
+        for _, path in ipairs(files) do
+            local lower = string.lower(path)
+            local isVsnd = string.sub(lower, -7) == '.vsnd_c' or string.sub(lower, -5) == '.vsnd'
+            if isVsnd then
+                local okR, data = pcall(readfile, path)
+                if okR and type(data) == 'string' and #data > 128 then
+                    local startPos = nil
+                    local outExt = 'ogg'
+                    local p1 = string.find(data, 'OggS', 1, true)
+                    if p1 then
+                        startPos = p1
+                    else
+                        local p2 = string.find(data, 'ID3', 1, true)
+                        if p2 then
+                            startPos = p2
+                            outExt = 'mp3'
+                        else
+                            local p3 = string.find(data, '­©', 1, true)  -- MP3 帧头 FFFB
+                            if p3 then
+                                startPos = p3
+                                outExt = 'mp3'
+                            end
+                        end
+                    end
+
+                    if startPos then
+                        local base = string.match(path, '([^/\\]+)%.[^./\\]+$')
+                        if base then
+                            local outPath = folder .. '/' .. base .. '.' .. outExt
+                            local okW = pcall(writefile, outPath, string.sub(data, startPos))
+                            if okW then
+                                carved += 1
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        if carved > 0 then
+            local ok2, list2 = pcall(function()
+                return listfiles(folder)
+            end)
+            if ok2 and type(list2) == 'table' then
+                files = list2
+            end
+        end
+    end
+
+    local count = 0
+    for _, path in ipairs(files) do
+        local lower = string.lower(path)
+        local ext = string.sub(lower, -4)
+        if ext == '.mp3' or ext == '.ogg' then
+            local base = string.match(path, '([^/\\]+)%.[^./\\]+$')
+            if base and base ~= '' then
+                local ok2, asset = pcall(function()
+                    return getcustomasset(path)
+                end)
+                if ok2 and type(asset) == 'string' and asset ~= '' then
+                    localSounds[base] = asset
+                    count += 1
+                end
+            end
+        end
+    end
+    return count, carved, folder
+end
+
+-- 名字 → 实际 SoundId（本地文件优先，其次内置 asset）
+local function resolveSoundAsset(name)
+    if not name then
+        return nil
+    end
+    if localSounds[name] then
+        return localSounds[name]
+    end
+    local id = hitsoundIds[name]
+    if id then
+        return 'rbxassetid://' .. id
+    end
+    return nil
+end
+
+scanLocalSounds()
+
+
 local playHitsound = nil
 local playKillsound = nil
 do
@@ -26293,8 +26474,8 @@ do
     playHitsound = function(ignoreToggle)
         if not ignoreToggle and not (Toggles.Hitsound and Toggles.Hitsound.Value) then return end
         local sName = Options.HitsoundSelect and Options.HitsoundSelect.Value
-        local id = hitsoundIds[sName]
-        if id then
+        local asset = resolveSoundAsset(sName)
+        if asset then
             local now = tick()
             if not ignoreToggle and (now - lastHitsoundTick) < 0.04 then return end
             lastHitsoundTick = now
@@ -26302,7 +26483,7 @@ do
             local vol = ((Options.HitsoundVolume and Options.HitsoundVolume.Value) or 60) / 100
             local snd = Instance.new('Sound')
             snd.Name = 'Hitsound'
-            snd.SoundId = 'rbxassetid://' .. id
+            snd.SoundId = asset
             snd.Volume = math.clamp(vol, 0.05, 1)
             snd.Parent = workspace
             snd:Play()
@@ -26313,8 +26494,8 @@ do
     playKillsound = function(ignoreToggle)
         if not ignoreToggle and not (Toggles.Killsound and Toggles.Killsound.Value) then return end
         local sName = Options.KillsoundSelect and Options.KillsoundSelect.Value
-        local id = hitsoundIds[sName]
-        if id then
+        local asset = resolveSoundAsset(sName)
+        if asset then
             local now = tick()
             if not ignoreToggle and (now - lastKillsoundTick) < 0.08 then return end
             lastKillsoundTick = now
@@ -26322,7 +26503,7 @@ do
             local vol = ((Options.KillsoundVolume and Options.KillsoundVolume.Value) or 80) / 100
             local snd = Instance.new('Sound')
             snd.Name = 'Killsound'
-            snd.SoundId = 'rbxassetid://' .. id
+            snd.SoundId = asset
             snd.Volume = math.clamp(vol, 0.05, 1)
             snd.Parent = workspace
             snd:Play()
@@ -30892,20 +31073,239 @@ do
 local SoundsGroup = Tabs.Misc:AddLeftGroupbox('音效')
 
 Toggles.Hitsound = SoundsGroup:AddToggle('Hitsound', { Text = '命中音效', Default = false })
-Options.HitsoundSelect = WXDrop(SoundsGroup, 'HitsoundSelect', { Text = '命中音效', Default = 5, Values = { 'Fatality', 'Skeet', 'Bell', 'COD', 'Metal', 'TF2 Critical', 'TF2', 'Rust', 'Neverlose', 'NL' } })
+local function buildSoundValues()
+    local list = { 'Fatality', 'Skeet', 'Bell', 'COD', 'Metal', 'TF2 Critical', 'TF2', 'Rust', 'Neverlose', 'NL' }
+    for name in pairs(localSounds) do
+        list[#list + 1] = name
+    end
+    table.sort(list)
+    return list
+end
+
+Options.HitsoundSelect = WXDrop(SoundsGroup, 'HitsoundSelect', { Text = '命中音效', Default = 5, Values = buildSoundValues() })
 Options.HitsoundVolume = SoundsGroup:AddSlider('HitsoundVolume', { Text = '命中音效音量', Default = 60, Min = 1, Max = 100, Rounding = 0, Compact = false })
 SoundsGroup:AddButton('试听命中音效', function()
     if playHitsound then playHitsound(true) end
 end)
 
+-- 下拉里「选到哪个就试听一次」（菜单打开时才触发，加载配置时不吵）
+local soundPreviewReady = false
+task.delay(2, function()
+    soundPreviewReady = true
+end)
+
+local function wireSoundPreview(opt, player)
+    if not (opt and opt.OnChanged) then
+        return
+    end
+    opt:OnChanged(function()
+        if not soundPreviewReady then
+            return
+        end
+        if not (Library and Library.Toggled) then
+            return
+        end
+        task.defer(function()
+            pcall(player)
+        end)
+    end)
+end
+
+wireSoundPreview(Options.HitsoundSelect, function()
+    if playHitsound then
+        playHitsound(true)
+    end
+end)
 SoundsGroup:AddDivider()
 
 Toggles.Killsound = SoundsGroup:AddToggle('Killsound', { Text = '击杀音效', Default = false })
-Options.KillsoundSelect = WXDrop(SoundsGroup, 'KillsoundSelect', { Text = '击杀音效', Default = 1, Values = { 'Fatality', 'Skeet', 'Bell', 'COD', 'Metal', 'TF2 Critical', 'TF2', 'Rust', 'Neverlose', 'NL' } })
+Options.KillsoundSelect = WXDrop(SoundsGroup, 'KillsoundSelect', { Text = '击杀音效', Default = 1, Values = buildSoundValues() })
 Options.KillsoundVolume = SoundsGroup:AddSlider('KillsoundVolume', { Text = '击杀音效音量', Default = 80, Min = 1, Max = 100, Rounding = 0, Compact = false })
 SoundsGroup:AddButton('试听击杀音效', function()
     if playKillsound then playKillsound(true) end
 end)
+
+-- 击杀音效在下拉创建之后才绑定（之前绑在创建前，Options.KillsoundSelect 还是 nil，所以不会响）
+wireSoundPreview(Options.KillsoundSelect, function()
+    if playKillsound then
+        playKillsound(true)
+    end
+end)
+
+SoundsGroup:AddDivider()
+SoundsGroup:AddButton('刷新本地音效列表', function()
+    local n, carved, folderUsed, triedPaths = scanLocalSounds()
+    local values = buildSoundValues()
+    if Options.HitsoundSelect then pcall(function() Options.HitsoundSelect:SetValues(values) end) end
+    if Options.KillsoundSelect then pcall(function() Options.KillsoundSelect:SetValues(values) end) end
+    local msg
+    if n > 0 then
+        msg = '已加载 ' .. n .. ' 个本地音效（' .. tostring(folderUsed or '') .. '）'
+    elseif folderUsed then
+        msg = '音效文件夹是 ' .. folderUsed .. '，但里面没有 .mp3 / .ogg'
+    else
+        msg = '找不到音效文件夹，试过：' .. tostring(triedPaths or '')
+    end
+    if (carved or 0) > 0 then
+        msg = msg .. '（从 vsnd_c 提取了 ' .. carved .. ' 个）'
+    end
+    Library:Notify(msg, 6)
+end)
+-- 第二个参数 true = 允许换行，长说明会自动折成两行，不会超出分组框
+SoundsGroup:AddLabel('本地音效：把 .mp3 / .ogg 放进执行器的 YZ_HUB/sounds 文件夹，文件名就是下拉里的名字，放好后点上面的「刷新本地音效列表」', true)
+
+SoundsGroup:AddDivider()
+Toggles.HurtSound = SoundsGroup:AddToggle('HurtSound', { Text = '受伤音效', Default = false, Tooltip = '自己掉血时播放' })
+Options.HurtSoundSelect = WXDrop(SoundsGroup, 'HurtSoundSelect', { Text = '受伤音效', Default = 1, Values = buildSoundValues() })
+Options.HurtSoundVolume = SoundsGroup:AddSlider('HurtSoundVolume', { Text = '受伤音效音量', Default = 70, Min = 1, Max = 100, Rounding = 0, Compact = false })
+
+Toggles.DryFireSound = SoundsGroup:AddToggle('DryFireSound', { Text = '空枪音效', Default = false, Tooltip = '没子弹还开枪时播放' })
+Options.DryFireSoundSelect = WXDrop(SoundsGroup, 'DryFireSoundSelect', { Text = '空枪音效', Default = 1, Values = buildSoundValues() })
+Options.DryFireSoundVolume = SoundsGroup:AddSlider('DryFireSoundVolume', { Text = '空枪音效音量', Default = 70, Min = 1, Max = 100, Rounding = 0, Compact = false })
+
+-- 这两个下拉也做成「选中就试听」
+local function previewSelectSound(selOpt, volOpt)
+    local asset = resolveSoundAsset(selOpt and selOpt.Value)
+    if not asset then
+        return
+    end
+    local snd = Instance.new('Sound')
+    snd.SoundId = asset
+    snd.Volume = math.clamp(((volOpt and volOpt.Value) or 70) / 100, 0.05, 1)
+    snd.Parent = workspace
+    snd:Play()
+    Debris:AddItem(snd, 2)
+end
+
+wireSoundPreview(Options.HurtSoundSelect, function()
+    previewSelectSound(Options.HurtSoundSelect, Options.HurtSoundVolume)
+end)
+wireSoundPreview(Options.DryFireSoundSelect, function()
+    previewSelectSound(Options.DryFireSoundSelect, Options.DryFireSoundVolume)
+end)
+
+-- ===== 检查配置里引用的本地音效是否缺失（换机器/换人用 cfg 时最常见） =====
+local missingSoundNotified = {}
+local function checkMissingSounds()
+    local list = {
+        { opt = Options.HitsoundSelect, label = '命中音效' },
+        { opt = Options.KillsoundSelect, label = '击杀音效' },
+        { opt = Options.HurtSoundSelect, label = '受击音效' },
+        { opt = Options.DryFireSoundSelect, label = '空枪音效' },
+    }
+
+    for _, item in ipairs(list) do
+        local name = item.opt and item.opt.Value
+        if type(name) == 'string' and name ~= '' and name ~= 'None' then
+            if not resolveSoundAsset(name) then
+                local key = item.label .. '|' .. name
+                if not missingSoundNotified[key] then
+                    missingSoundNotified[key] = true
+                    local text = string.format('缺少%s[%s]，请寻找cfg作者获取', item.label, name)
+                    if _G.YZIslandNotice then
+                        pcall(_G.YZIslandNotice, text, 8)
+                    else
+                        pcall(function()
+                            Library:Notify(text, 8)
+                        end)
+                    end
+                end
+            end
+        end
+    end
+end
+
+_G.YZCheckMissingSounds = checkMissingSounds
+
+-- 加载完成后检查一次（等本地音效扫描 + 灵动岛都就绪）
+task.delay(5, function()
+    pcall(checkMissingSounds)
+end)
+
+-- ===== 受伤 / 空枪音效的触发逻辑（IIFE：不占顶层寄存器） =====
+; (function()
+    local lastHurt = 0
+    local lastDry = 0
+
+    local function playByName(selOpt, volOpt)
+        if not (selOpt and selOpt.Value) then
+            return
+        end
+        local asset = resolveSoundAsset(selOpt.Value)
+        if not asset then
+            return
+        end
+        local snd = Instance.new('Sound')
+        snd.SoundId = asset
+        snd.Volume = math.clamp(((volOpt and volOpt.Value) or 70) / 100, 0.05, 1)
+        snd.Parent = workspace
+        snd:Play()
+        Debris:AddItem(snd, 2)
+    end
+
+    -- 受伤：监听自己 Humanoid 的 HealthChanged
+    local function watchCharacter(char)
+        local hum = char and char:WaitForChild('Humanoid', 5)
+        if not hum then
+            return
+        end
+        local lastHealth = hum.Health
+        hum.HealthChanged:Connect(function(h)
+            local decreasing = h < lastHealth - 0.5
+            if decreasing and Toggles.HurtSound and Toggles.HurtSound.Value then
+                local now = os.clock()
+                if now - lastHurt > 0.12 then
+                    lastHurt = now
+                    playByName(Options.HurtSoundSelect, Options.HurtSoundVolume)
+                end
+            end
+            lastHealth = h
+        end)
+    end
+
+    if LP.Character then
+        task.spawn(function()
+            pcall(watchCharacter, LP.Character)
+        end)
+    end
+    LP.CharacterAdded:Connect(function(char)
+        task.spawn(function()
+            pcall(watchCharacter, char)
+        end)
+    end)
+
+    -- 空枪：按住/点鼠标时，如果手上是枪且弹药为 0，就播一声
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then
+            return
+        end
+        if input.UserInputType ~= Enum.UserInputType.MouseButton1
+            and input.UserInputType ~= Enum.UserInputType.Touch then
+            return
+        end
+        if not (Toggles.DryFireSound and Toggles.DryFireSound.Value) then
+            return
+        end
+
+        local char = LP.Character
+        local tool = char and char:FindFirstChildOfClass('Tool')
+        if not tool then
+            return
+        end
+
+        local ammo = tool:GetAttribute('Local_CurrentAmmo') or tool:GetAttribute('CurrentAmmo')
+        if ammo == nil or tonumber(ammo) > 0 then
+            return
+        end
+
+        local now = os.clock()
+        if now - lastDry < 0.15 then
+            return
+        end
+        lastDry = now
+        playByName(Options.DryFireSoundSelect, Options.DryFireSoundVolume)
+    end)
+end)()
 
 local MiscGroup = Tabs.Misc:AddLeftGroupbox('杂项')
 Toggles.Invisible = MiscGroup:AddToggle('Invisible', { Text = '隐身', Default = false, Tooltip = '通过 CFrame 位置失同步让其他玩家看不到你' })
@@ -32648,6 +33048,11 @@ local function applyCfgString(str)
         end
         if _G.YZClampHudLayout then
             pcall(_G.YZClampHudLayout)
+        end
+        if _G.YZCheckMissingSounds then
+            task.delay(0.5, function()
+                pcall(_G.YZCheckMissingSounds)
+            end)
         end
         -- 背景图不透明度重新按当前值刷一次
         pcall(function()
@@ -34605,16 +35010,48 @@ end)()
     end)
 end)()
 
--- ====================== 掩体描边（范围内墙体 / 掩体高亮描边） ======================
+-- ====================== 掩体迷雾（脚下雾圈 + 圈内描边） ======================
+-- 效果：玩家脚下生成一圈半透明的“迷雾”，雾圈内（按距离衰减）的墙体被描边出来，
+--       离得越近越清晰，到边缘逐渐消失 —— 靠近才显示的那种感觉。
 ; (function()
     local Workspace = game:GetService('Workspace')
 
     local active = {}
     local params = OverlapParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
-    params.MaxParts = 500
+    params.MaxParts = 400
 
-    local function clearAll()
+    -- 雾圈：两层同轴圆柱，内层实一点、外层更淡，形成柔和边界
+    local rings = {}
+    local function ensureRing(index, diameter, transparency, color)
+        local part = rings[index]
+        if not part or not part.Parent then
+            part = Instance.new('Part')
+            part.Name = 'YZFogRing' .. index
+            part.Shape = Enum.PartType.Cylinder
+            part.Material = Enum.Material.ForceField
+            part.Anchored = true
+            part.CanCollide = false
+            part.CanQuery = false
+            part.CanTouch = false
+            part.CastShadow = false
+            part.Parent = Workspace.CurrentCamera or Workspace
+            rings[index] = part
+        end
+        part.Size = Vector3.new(0.12, diameter, diameter)
+        part.Color = color
+        part.Transparency = transparency
+        return part
+    end
+
+    local function clearRings()
+        for _, part in pairs(rings) do
+            pcall(function() part:Destroy() end)
+        end
+        table.clear(rings)
+    end
+
+    local function clearHighlights()
         for target, cur in pairs(active) do
             if cur.hl then
                 pcall(function() cur.hl:Destroy() end)
@@ -34626,10 +35063,16 @@ end)()
         table.clear(active)
     end
 
-    local lastRefreshPos = nil
+    local function clearAll()
+        clearHighlights()
+        clearRings()
+    end
 
-    local function refresh(force)
-        if not (Toggles.CoverOutline and Toggles.CoverOutline.Value) then
+    local lastPos = nil
+
+    local function refresh()
+        local enabled = Toggles.CoverOutline and Toggles.CoverOutline.Value
+        if not enabled then
             clearAll()
             return
         end
@@ -34645,10 +35088,33 @@ end)()
         local maxCount = math.floor(tonumber(Options.CoverOutlineCount and Options.CoverOutlineCount.Value) or 24)
         local opacity = math.clamp((tonumber(Options.CoverOutlineOpacity and Options.CoverOutlineOpacity.Value) or 100) / 100, 0.05, 1)
         local thickness = math.clamp(tonumber(Options.CoverOutlineThickness and Options.CoverOutlineThickness.Value) or 2, 1, 6)
+        local fogAlpha = math.clamp((tonumber(Options.CoverFogOpacity and Options.CoverFogOpacity.Value) or 80) / 100, 0.05, 1)
         local through = Toggles.CoverOutlineThroughWall and Toggles.CoverOutlineThroughWall.Value
         local depth = through and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
         local color = (Options.CoverOutlineColor and Options.CoverOutlineColor.Value) or Color3.fromRGB(130, 205, 255)
 
+        -- ===== 脚下雾圈 =====
+        -- 向下打一条射线找地面，让圆环贴着地而不是悬空/穿进地板
+        local groundY = root.Position.Y - 2.9
+        local rayOk, rayHit = pcall(function()
+            local rc = RaycastParams.new()
+            rc.FilterType = Enum.RaycastFilterType.Exclude
+            rc.FilterDescendantsInstances = { char }
+            local hit = Workspace:Raycast(root.Position, Vector3.new(0, -12, 0), rc)
+            return hit and hit.Position or nil
+        end)
+        if rayOk and rayHit then
+            groundY = rayHit.Y
+        end
+
+        local feet = Vector3.new(root.Position.X, groundY + 0.06, root.Position.Z)
+        local ringCF = CFrame.new(feet) * CFrame.Angles(0, 0, math.rad(90))
+        local inner = ensureRing(1, range * 2, 1 - (0.32 * fogAlpha), color)
+        inner.CFrame = ringCF
+        local outer = ensureRing(2, range * 2.2, 1 - (0.16 * fogAlpha), color)
+        outer.CFrame = ringCF
+
+        -- ===== 圈内描边 =====
         local exclude = { char }
         if Workspace.CurrentCamera then
             exclude[#exclude + 1] = Workspace.CurrentCamera
@@ -34667,7 +35133,6 @@ end)()
             return
         end
 
-        -- 按模型聚合，记录最近的那块部件（描边粗细用 SelectionBox 画在这块上）
         local candidates = {}
         for _, part in ipairs(parts) do
             if part:IsA('BasePart')
@@ -34696,35 +35161,38 @@ end)()
 
         local want = {}
         for i = 1, math.min(#list, maxCount) do
-            want[list[i].target] = list[i]
+            local item = list[i]
+            -- 距离衰减：越靠近越清晰，到雾圈边缘完全消失
+            local fade = 1 - math.clamp(item.dist / math.max(range, 1), 0, 1)
+            if fade > 0.06 then
+                item.fade = fade
+                want[item.target] = item
+            end
         end
 
-        -- 迟滞：已经描边的目标只要还在「范围 × 0.95」内就保留，
-        -- 避免跳跃/移动时第 N 个目标被反复换掉导致描边一闪一闪
+        -- 迟滞：已有的目标只要还在 0.95 倍半径内就保留，避免移动时闪烁
         for target, cur in pairs(active) do
             if not want[target] then
                 local pos = (target:IsA('Model') and target:GetPivot().Position) or target.Position
-                if (pos - root.Position).Magnitude <= range * 0.95 and cur.part then
-                    want[target] = { target = target, part = cur.part, dist = 0 }
+                local dist = (pos - root.Position).Magnitude
+                if dist <= range * 0.95 and cur.part then
+                    local fade = 1 - math.clamp(dist / math.max(range, 1), 0, 1)
+                    want[target] = { target = target, part = cur.part, dist = dist, fade = fade }
                 end
             end
         end
 
-        -- 删除不需要的
         for target, cur in pairs(active) do
             if not want[target] then
-                if cur.hl then
-                    pcall(function() cur.hl:Destroy() end)
-                end
-                if cur.sb then
-                    pcall(function() cur.sb:Destroy() end)
-                end
+                if cur.hl then pcall(function() cur.hl:Destroy() end) end
+                if cur.sb then pcall(function() cur.sb:Destroy() end) end
                 active[target] = nil
             end
         end
 
-        -- 补齐 / 刷新
         for target, item in pairs(want) do
+            local alpha = opacity * math.clamp(0.18 + 0.82 * (item.fade or 0), 0.05, 1)
+
             local cur = active[target]
             if not cur or not cur.hl or not cur.hl.Parent then
                 local hl = Instance.new('Highlight')
@@ -34738,25 +35206,21 @@ end)()
             end
             cur.hl.OutlineColor = color
             cur.hl.DepthMode = depth
-            cur.hl.OutlineTransparency = 1 - opacity
+            cur.hl.OutlineTransparency = 1 - alpha
 
-            -- 粗细 > 1 时，用 SelectionBox 在最近那块墙上再画一圈可调粗细的线框
             if thickness > 1 and item.part then
                 if cur.sb and cur.part == item.part then
                     cur.sb.Color3 = color
-                    cur.sb.Transparency = 1 - opacity
+                    cur.sb.Transparency = 1 - alpha
                     cur.sb.LineThickness = thickness
                     cur.sb.AlwaysOnTop = through and true or false
                 else
-                    if cur.sb then
-                        pcall(function() cur.sb:Destroy() end)
-                        cur.sb = nil
-                    end
+                    if cur.sb then pcall(function() cur.sb:Destroy() end) end
                     local sb = Instance.new('SelectionBox')
                     sb.Name = 'YZCoverBox'
                     sb.Adornee = item.part
                     sb.SurfaceTransparency = 1
-                    sb.Transparency = 1 - opacity
+                    sb.Transparency = 1 - alpha
                     sb.Color3 = color
                     sb.LineThickness = thickness
                     sb.AlwaysOnTop = through and true or false
@@ -34771,43 +35235,31 @@ end)()
             end
         end
 
-        lastRefreshPos = root.Position
+        lastPos = root.Position
     end
 
-    -- 自适应节流：掩体多的时候自动放慢刷新，避免每帧重建大量 Highlight 导致 UI 卡死
-    local refreshInterval = 0.5
+    local refreshInterval = 0.3
     task.spawn(function()
         while true do
             task.wait(refreshInterval)
             local t0 = os.clock()
-            local char = LP.Character
-            local root = char and char:FindFirstChild('HumanoidRootPart')
-            local moved = root and lastRefreshPos and (root.Position - lastRefreshPos).Magnitude or 999
-            -- 平时按间隔刷新；移动超过 6 格立刻刷新，避免跑动时描边跟不上
-            if moved > 6 then
-                pcall(refresh, true)
-            else
-                pcall(refresh, false)
-            end
+            pcall(refresh)
             local cost = os.clock() - t0
             if cost > 0.06 then
                 refreshInterval = math.min(2.0, refreshInterval + 0.25)
             else
-                refreshInterval = math.max(0.35, refreshInterval - 0.05)
+                refreshInterval = math.max(0.3, refreshInterval - 0.05)
             end
         end
     end)
 
-    -- 选项改了不立刻刷新：拖滑块时每动一格都刷新会卡，统一延迟 0.25 秒只刷一次
     local pendingToken = 0
     local function scheduleRefresh()
         pendingToken += 1
         local token = pendingToken
-        task.delay(0.25, function()
-            if token ~= pendingToken then
-                return
-            end
-            pcall(refresh, true)
+        task.delay(0.2, function()
+            if token ~= pendingToken then return end
+            pcall(refresh)
         end)
     end
 
@@ -34823,9 +35275,7 @@ end)()
     end
 
     if Toggles.CoverOutlineThroughWall then
-        Toggles.CoverOutlineThroughWall:OnChanged(function()
-            scheduleRefresh()
-        end)
+        Toggles.CoverOutlineThroughWall:OnChanged(scheduleRefresh)
     end
 
     for _, option in ipairs({
@@ -34834,16 +35284,15 @@ end)()
         Options.CoverOutlineOpacity,
         Options.CoverOutlineColor,
         Options.CoverOutlineThickness,
+        Options.CoverFogOpacity,
     }) do
         if option and option.OnChanged then
-            option:OnChanged(function()
-                scheduleRefresh()
-            end)
+            option:OnChanged(scheduleRefresh)
         end
     end
 
     LP.CharacterAdded:Connect(function()
-        lastRefreshPos = nil
+        lastPos = nil
         pcall(clearAll)
     end)
 end)()
