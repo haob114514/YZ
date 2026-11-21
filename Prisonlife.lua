@@ -22151,7 +22151,7 @@ Toggles.TargetHUD:AddKeyPicker('TargetHUDBind', { Default = 'None', SyncToggleSt
 TargetHUD_Tab:AddDivider()
 
 Options.TargetHUDTheme = WXDrop(TargetHUD_Tab, 'TargetHUDTheme', {
-    Values = { '浅色（截图款）', '深色' },
+    Values = { '浅色', '深色' },
     Default = 2,
     Multi = false,
     Text = '卡片风格'
@@ -22306,40 +22306,28 @@ Options.PubgKillMsgDuration = KillMsgGroup:AddSlider('PubgKillMsgDuration', {
     Text = '停留时长（秒）', Default = 3, Min = 1, Max = 8, Rounding = 1, Compact = false
 })
 
--- 掩体迷雾（脚下雾圈 + 圈内描边，靠近才显示）
-local CoverGroup = Tabs.Visuals:AddLeftGroupbox('掩体迷雾')
+-- 掩体绘制（只画半径内那一段，越远越淡）
+local CoverGroup = Tabs.Visuals:AddLeftGroupbox('掩体绘制')
 
 Toggles.CoverOutline = CoverGroup:AddToggle('CoverOutline', {
-    Text = '启用掩体迷雾',
+    Text = '启用掩体绘制',
     Default = false,
-    Tooltip = '在脚下生成一圈迷雾，圈内墙体越近越清晰、到边缘逐渐消失',
+    Tooltip = '以自己为圆心，只描半径内的那一截墙；圈外部分完全不画，越靠边越淡',
 })
 Options.CoverOutlineRange = CoverGroup:AddSlider('CoverOutlineRange', {
-    Text = '迷雾半径（格）', Default = 60, Min = 10, Max = 250, Rounding = 0, Compact = false,
-})
-Options.CoverOutlineCount = CoverGroup:AddSlider('CoverOutlineCount', {
-    Text = '最多描边数量', Default = 24, Min = 5, Max = 120, Rounding = 0, Compact = false,
-    Tooltip = '数量越多越吃性能；手机建议 15~25',
+    Text = '范围（格）', Default = 60, Min = 10, Max = 400, Rounding = 0, Compact = false,
+    Tooltip = '圈的半径：圆内的墙体被描边，圆外的那截不画',
 })
 Options.CoverOutlineOpacity = CoverGroup:AddSlider('CoverOutlineOpacity', {
     Text = '描边浓度', Default = 100, Min = 10, Max = 100, Rounding = 0, Suffix = ' %', Compact = false,
+    Tooltip = '指自己身边的描边浓度，越靠近圈边越淡',
 })
 Options.CoverOutlineThickness = CoverGroup:AddSlider('CoverOutlineThickness', {
     Text = '描边粗细', Default = 2, Min = 1, Max = 6, Rounding = 0, Compact = false,
-    Tooltip = '1 = 只描细轮廓；2 以上会额外画一圈可调粗细的线框',
-})
-Toggles.CoverOutlineThroughWall = CoverGroup:AddToggle('CoverOutlineThroughWall', {
-    Text = '穿透显示（隔墙也描边）',
-    Default = false,
-    Tooltip = '关：只描看得见的掩体（不穿墙）；开：隔墙也显示描边',
-})
-Options.CoverFogOpacity = CoverGroup:AddSlider('CoverFogOpacity', {
-    Text = '雾圈浓度', Default = 80, Min = 10, Max = 100, Rounding = 0, Suffix = ' %', Compact = false,
-    Tooltip = '脚下那圈雾的明显程度（越高越像一圈实体光带）',
 })
 do
-    local L = CoverGroup:AddLabel('描边 / 雾圈颜色')
-    L:AddColorPicker('CoverOutlineColor', { Default = Color3.fromRGB(130, 205, 255), Title = '描边 / 雾圈颜色' })
+    local L = CoverGroup:AddLabel('描边颜色')
+    L:AddColorPicker('CoverOutlineColor', { Default = Color3.fromRGB(130, 205, 255), Title = '描边颜色' })
 end
 
 -- ====================== MOVEMENT ======================
@@ -26439,7 +26427,7 @@ local function scanLocalSounds()
                 end)
                 if ok2 and type(asset) == 'string' and asset ~= '' then
                     localSounds[base] = asset
-                    count += 1
+                    count = count + 1
                 end
             end
         end
@@ -32661,7 +32649,7 @@ end)()
                 done = callback(conn) == true
             end)
             if done then
-                count += 1
+                count = count + 1
             end
         end
         return true, count
@@ -35010,111 +34998,96 @@ end)()
     end)
 end)()
 
--- ====================== 掩体迷雾（脚下雾圈 + 圈内描边） ======================
--- 效果：玩家脚下生成一圈半透明的“迷雾”，雾圈内（按距离衰减）的墙体被描边出来，
---       离得越近越清晰，到边缘逐渐消失 —— 靠近才显示的那种感觉。
+-- ====================== 掩体绘制（只画圈内那一段，越远越淡） ======================
+-- 做法：把每个部件的 12 条棱按「以自己为圆心、半径 = 范围」的圆做裁剪，
+--       只画裁完还留在圆内的那截线；圆外的部分一根线都不画（不是把整块墙框住）。
+--       没有烟雾 / 没有波纹 / 不用 Highlight 整块描边。
 ; (function()
     local Workspace = game:GetService('Workspace')
 
-    local active = {}
-    local params = OverlapParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    params.MaxParts = 400
-
-    -- 雾圈：两层同轴圆柱，内层实一点、外层更淡，形成柔和边界
-    local rings = {}
-    local function ensureRing(index, diameter, transparency, color)
-        local part = rings[index]
-        if not part or not part.Parent then
-            part = Instance.new('Part')
-            part.Name = 'YZFogRing' .. index
-            part.Shape = Enum.PartType.Cylinder
-            part.Material = Enum.Material.ForceField
-            part.Anchored = true
-            part.CanCollide = false
-            part.CanQuery = false
-            part.CanTouch = false
-            part.CastShadow = false
-            part.Parent = Workspace.CurrentCamera or Workspace
-            rings[index] = part
+    -- 清掉旧实现留在 Workspace 的雾圈实体
+    for _, obj in ipairs(Workspace:GetChildren()) do
+        if string.sub(obj.Name, 1, 9) == 'YZFogRing' then
+            pcall(function() obj:Destroy() end)
         end
-        part.Size = Vector3.new(0.12, diameter, diameter)
-        part.Color = color
-        part.Transparency = transparency
-        return part
     end
 
-    local function clearRings()
-        for _, part in pairs(rings) do
-            pcall(function() part:Destroy() end)
+    local MAX_PARTS = 40          -- 一次最多描多少个部件（每个部件 12 条棱）
+    local BITS = { 1, 2, 4 }      -- 角落索引的位运算，用来生成 12 条棱
+
+    local pool = {}
+    local prevUsed = 0
+    local targets = {}
+    local drawingOK = true
+
+    local function getLine(i)
+        local line = pool[i]
+        if not line then
+            local ok, obj = pcall(function() return Drawing.new('Line') end)
+            if not ok or not obj then
+                drawingOK = false
+                return nil
+            end
+            obj.Thickness = 2
+            obj.Transparency = 1
+            obj.Color = Color3.fromRGB(130, 205, 255)
+            obj.ZIndex = 6
+            obj.Visible = false
+            pool[i] = obj
+            line = obj
         end
-        table.clear(rings)
+        return line
     end
 
-    local function clearHighlights()
-        for target, cur in pairs(active) do
-            if cur.hl then
-                pcall(function() cur.hl:Destroy() end)
-            end
-            if cur.sb then
-                pcall(function() cur.sb:Destroy() end)
+    local function hideLines(from, to)
+        for i = from, to do
+            local line = pool[i]
+            if line and line.Visible then
+                pcall(function() line.Visible = false end)
             end
         end
-        table.clear(active)
     end
 
     local function clearAll()
-        clearHighlights()
-        clearRings()
+        table.clear(targets)
+        if prevUsed > 0 then
+            hideLines(1, prevUsed)
+            prevUsed = 0
+        end
     end
 
-    local lastPos = nil
-
-    local function refresh()
-        local enabled = Toggles.CoverOutline and Toggles.CoverOutline.Value
-        if not enabled then
-            clearAll()
-            return
+    -- 到部件表面的最短距离（不是到中心），贴墙站也算很近
+    local function surfaceDist(part, pos)
+        local ok, d = pcall(function()
+            local rel = part.CFrame:PointToObjectSpace(pos)
+            local half = part.Size * 0.5
+            local cx = math.clamp(rel.X, -half.X, half.X)
+            local cy = math.clamp(rel.Y, -half.Y, half.Y)
+            local cz = math.clamp(rel.Z, -half.Z, half.Z)
+            return (Vector3.new(cx, cy, cz) - rel).Magnitude
+        end)
+        if ok and d then
+            return d
         end
+        return (part.Position - pos).Magnitude
+    end
 
+    local params = OverlapParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.MaxParts = 600
+
+    -- 慢扫描：挑出范围内的掩体部件，并预算好它们的 12 条棱（部件静止，扫一次就够）
+    local function scan()
+        local enabled = Toggles.CoverOutline and Toggles.CoverOutline.Value
         local char = LP.Character
         local root = char and char:FindFirstChild('HumanoidRootPart')
-        if not root then
+        if not enabled or not root then
             clearAll()
             return
         end
 
-        local range = tonumber(Options.CoverOutlineRange and Options.CoverOutlineRange.Value) or 60
-        local maxCount = math.floor(tonumber(Options.CoverOutlineCount and Options.CoverOutlineCount.Value) or 24)
-        local opacity = math.clamp((tonumber(Options.CoverOutlineOpacity and Options.CoverOutlineOpacity.Value) or 100) / 100, 0.05, 1)
-        local thickness = math.clamp(tonumber(Options.CoverOutlineThickness and Options.CoverOutlineThickness.Value) or 2, 1, 6)
-        local fogAlpha = math.clamp((tonumber(Options.CoverFogOpacity and Options.CoverFogOpacity.Value) or 80) / 100, 0.05, 1)
-        local through = Toggles.CoverOutlineThroughWall and Toggles.CoverOutlineThroughWall.Value
-        local depth = through and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
-        local color = (Options.CoverOutlineColor and Options.CoverOutlineColor.Value) or Color3.fromRGB(130, 205, 255)
+        local range = math.max(tonumber(Options.CoverOutlineRange and Options.CoverOutlineRange.Value) or 60, 5)
 
-        -- ===== 脚下雾圈 =====
-        -- 向下打一条射线找地面，让圆环贴着地而不是悬空/穿进地板
-        local groundY = root.Position.Y - 2.9
-        local rayOk, rayHit = pcall(function()
-            local rc = RaycastParams.new()
-            rc.FilterType = Enum.RaycastFilterType.Exclude
-            rc.FilterDescendantsInstances = { char }
-            local hit = Workspace:Raycast(root.Position, Vector3.new(0, -12, 0), rc)
-            return hit and hit.Position or nil
-        end)
-        if rayOk and rayHit then
-            groundY = rayHit.Y
-        end
-
-        local feet = Vector3.new(root.Position.X, groundY + 0.06, root.Position.Z)
-        local ringCF = CFrame.new(feet) * CFrame.Angles(0, 0, math.rad(90))
-        local inner = ensureRing(1, range * 2, 1 - (0.32 * fogAlpha), color)
-        inner.CFrame = ringCF
-        local outer = ensureRing(2, range * 2.2, 1 - (0.16 * fogAlpha), color)
-        outer.CFrame = ringCF
-
-        -- ===== 圈内描边 =====
         local exclude = { char }
         if Workspace.CurrentCamera then
             exclude[#exclude + 1] = Workspace.CurrentCamera
@@ -35133,167 +35106,211 @@ end)()
             return
         end
 
-        local candidates = {}
+        -- 过滤：太碎的、跨度超大的、扁平大板（地板 / 天花板）都不算掩体
+        local list = {}
         for _, part in ipairs(parts) do
-            if part:IsA('BasePart')
-                and part.Anchored
-                and part.Transparency < 0.95
-                and part.Size.Magnitude > 8 then
-                local model = part:FindFirstAncestorOfClass('Model') or part
-                local dist = (part.Position - root.Position).Magnitude
-                local item = candidates[model]
-                if not item then
-                    candidates[model] = { target = model, part = part, dist = dist }
-                elseif dist < item.dist then
-                    item.part = part
-                    item.dist = dist
+            if part:IsA('BasePart') and part.Anchored and part.Transparency < 0.95 then
+                local sz = part.Size
+                local maxSpan = math.max(sz.X, sz.Y, sz.Z)
+                local skip = false
+                if sz.Magnitude < 8 then
+                    skip = true
+                elseif maxSpan > 300 then
+                    skip = true
+                elseif sz.Y <= 2.5 and sz.X > 30 and sz.Z > 30 then
+                    skip = true
+                end
+                if not skip then
+                    local d = surfaceDist(part, root.Position)
+                    if d <= range then
+                        list[#list + 1] = { part = part, dist = d }
+                    end
                 end
             end
-        end
-
-        local list = {}
-        for _, item in pairs(candidates) do
-            list[#list + 1] = item
         end
         table.sort(list, function(a, b)
             return a.dist < b.dist
         end)
 
-        local want = {}
-        for i = 1, math.min(#list, maxCount) do
-            local item = list[i]
-            -- 距离衰减：越靠近越清晰，到雾圈边缘完全消失
-            local fade = 1 - math.clamp(item.dist / math.max(range, 1), 0, 1)
-            if fade > 0.06 then
-                item.fade = fade
-                want[item.target] = item
+        local newTargets = {}
+        for i = 1, math.min(#list, MAX_PARTS) do
+            local part = list[i].part
+            local cf = part.CFrame
+            local hs = part.Size * 0.5
+            local corners = {}
+            for ci = 1, 8 do
+                local v = ci - 1
+                local sx = (v % 2 == 1) and 1 or -1
+                local sy = (math.floor(v / 2) % 2 == 1) and 1 or -1
+                local sz = (math.floor(v / 4) % 2 == 1) and 1 or -1
+                corners[ci] = cf:PointToWorldSpace(Vector3.new(sx * hs.X, sy * hs.Y, sz * hs.Z))
             end
-        end
 
-        -- 迟滞：已有的目标只要还在 0.95 倍半径内就保留，避免移动时闪烁
-        for target, cur in pairs(active) do
-            if not want[target] then
-                local pos = (target:IsA('Model') and target:GetPivot().Position) or target.Position
-                local dist = (pos - root.Position).Magnitude
-                if dist <= range * 0.95 and cur.part then
-                    local fade = 1 - math.clamp(dist / math.max(range, 1), 0, 1)
-                    want[target] = { target = target, part = cur.part, dist = dist, fade = fade }
+            local edges = {}
+            for ci = 1, 8 do
+                local v = ci - 1
+                for _, b in ipairs(BITS) do
+                    if math.floor(v / b) % 2 == 0 then
+                        edges[#edges + 1] = { corners[ci], corners[ci + b] }
+                    end
                 end
             end
+
+            newTargets[#newTargets + 1] = { edges = edges, dist = list[i].dist }
         end
 
-        for target, cur in pairs(active) do
-            if not want[target] then
-                if cur.hl then pcall(function() cur.hl:Destroy() end) end
-                if cur.sb then pcall(function() cur.sb:Destroy() end) end
-                active[target] = nil
-            end
-        end
-
-        for target, item in pairs(want) do
-            local alpha = opacity * math.clamp(0.18 + 0.82 * (item.fade or 0), 0.05, 1)
-
-            local cur = active[target]
-            if not cur or not cur.hl or not cur.hl.Parent then
-                local hl = Instance.new('Highlight')
-                hl.Name = 'YZCoverOutline'
-                hl.FillTransparency = 1
-                hl.Adornee = target
-                hl.Parent = target
-                cur = cur or {}
-                cur.hl = hl
-                active[target] = cur
-            end
-            cur.hl.OutlineColor = color
-            cur.hl.DepthMode = depth
-            cur.hl.OutlineTransparency = 1 - alpha
-
-            if thickness > 1 and item.part then
-                if cur.sb and cur.part == item.part then
-                    cur.sb.Color3 = color
-                    cur.sb.Transparency = 1 - alpha
-                    cur.sb.LineThickness = thickness
-                    cur.sb.AlwaysOnTop = through and true or false
-                else
-                    if cur.sb then pcall(function() cur.sb:Destroy() end) end
-                    local sb = Instance.new('SelectionBox')
-                    sb.Name = 'YZCoverBox'
-                    sb.Adornee = item.part
-                    sb.SurfaceTransparency = 1
-                    sb.Transparency = 1 - alpha
-                    sb.Color3 = color
-                    sb.LineThickness = thickness
-                    sb.AlwaysOnTop = through and true or false
-                    sb.Parent = item.part
-                    cur.sb = sb
-                    cur.part = item.part
-                end
-            elseif cur.sb then
-                pcall(function() cur.sb:Destroy() end)
-                cur.sb = nil
-                cur.part = nil
-            end
-        end
-
-        lastPos = root.Position
+        targets = newTargets
     end
 
-    local refreshInterval = 0.3
+    -- 逐帧：把每条棱按圆裁剪，只画圆内剩下的那截
+    local function render()
+        local enabled = Toggles.CoverOutline and Toggles.CoverOutline.Value
+        if not enabled or #targets == 0 or not drawingOK then
+            if prevUsed > 0 then
+                hideLines(1, prevUsed)
+                prevUsed = 0
+            end
+            return
+        end
+
+        local char = LP.Character
+        local root = char and char:FindFirstChild('HumanoidRootPart')
+        local cam = Workspace.CurrentCamera
+        if not root or not cam then
+            return
+        end
+
+        local range = math.max(tonumber(Options.CoverOutlineRange and Options.CoverOutlineRange.Value) or 60, 5)
+        local opacity = math.clamp((tonumber(Options.CoverOutlineOpacity and Options.CoverOutlineOpacity.Value) or 100) / 100, 0.05, 1)
+        local thickness = math.clamp(tonumber(Options.CoverOutlineThickness and Options.CoverOutlineThickness.Value) or 2, 1, 6)
+        local color = (Options.CoverOutlineColor and Options.CoverOutlineColor.Value) or Color3.fromRGB(130, 205, 255)
+
+        local cx, cz = root.Position.X, root.Position.Z
+        local r2 = range * range
+        local idx = 0
+
+        for _, t in ipairs(targets) do
+            for _, e in ipairs(t.edges) do
+                local a, b = e[1], e[2]
+                local ax, az = a.X - cx, a.Z - cz
+                local dxw, dyw, dzw = b.X - a.X, b.Y - a.Y, b.Z - a.Z
+                local bx, bz = ax + dxw, az + dzw
+
+                -- 求线段落在圆内的参数区间 [t0, t1]
+                local t0, t1
+                local A = dxw * dxw + dzw * dzw
+                local C = ax * ax + az * az - r2
+                if A < 1e-6 then
+                    if C <= 0 then
+                        t0, t1 = 0, 1
+                    end
+                else
+                    local B = 2 * (ax * dxw + az * dzw)
+                    local disc = B * B - 4 * A * C
+                    if disc > 0 then
+                        local sd = math.sqrt(disc)
+                        t0 = (-B - sd) / (2 * A)
+                        t1 = (-B + sd) / (2 * A)
+                        if t0 < 0 then t0 = 0 end
+                        if t1 > 1 then t1 = 1 end
+                        if t1 - t0 <= 0.002 then
+                            t0 = nil
+                        end
+                    end
+                end
+
+                if t0 then
+                    local p1 = Vector3.new(a.X + dxw * t0, a.Y + dyw * t0, a.Z + dzw * t0)
+                    local p2 = Vector3.new(a.X + dxw * t1, a.Y + dyw * t1, a.Z + dzw * t1)
+
+                    local s1, v1 = cam:WorldToViewportPoint(p1)
+                    local s2, v2 = cam:WorldToViewportPoint(p2)
+                    if v1 and v2 and s1.Z > 0 and s2.Z > 0 then
+                        -- 距离渐变：用裁完这段线的中点算，越靠边越淡
+                        local mx = (p1.X + p2.X) * 0.5 - cx
+                        local mz = (p1.Z + p2.Z) * 0.5 - cz
+                        local d = math.sqrt(mx * mx + mz * mz)
+                        local alpha = opacity * (1 - math.clamp(d / range, 0, 1)) ^ 1.15
+
+                        if alpha > 0.02 then
+                            idx = idx + 1
+                            local line = getLine(idx)
+                            if not line then
+                                break
+                            end
+                            line.From = Vector2.new(s1.X, s1.Y)
+                            line.To = Vector2.new(s2.X, s2.Y)
+                            line.Color = color
+                            line.Thickness = thickness
+                            line.Transparency = 1 - alpha
+                            line.Visible = true
+                        end
+                    end
+                end
+            end
+        end
+
+        if prevUsed > idx then
+            hideLines(idx + 1, prevUsed)
+        end
+        prevUsed = idx
+    end
+
+    local function refreshSoon()
+        task.defer(function()
+            pcall(scan)
+        end)
+    end
+
+    -- 零件挑选：0.2s 自适应；线条更新：隔帧（约 30fps）
+    local interval = 0.2
     task.spawn(function()
         while true do
-            task.wait(refreshInterval)
+            task.wait(interval)
             local t0 = os.clock()
-            pcall(refresh)
+            pcall(scan)
             local cost = os.clock() - t0
-            if cost > 0.06 then
-                refreshInterval = math.min(2.0, refreshInterval + 0.25)
+            if cost > 0.05 then
+                interval = math.min(0.8, interval + 0.1)
             else
-                refreshInterval = math.max(0.3, refreshInterval - 0.05)
+                interval = math.max(0.18, interval - 0.02)
             end
         end
     end)
 
-    local pendingToken = 0
-    local function scheduleRefresh()
-        pendingToken += 1
-        local token = pendingToken
-        task.delay(0.2, function()
-            if token ~= pendingToken then return end
-            pcall(refresh)
-        end)
-    end
+    local flip = 0
+    RunService.RenderStepped:Connect(function()
+        flip = flip + 1
+        if flip % 2 ~= 0 then
+            return
+        end
+        pcall(render)
+    end)
 
     if Toggles.CoverOutline then
         Toggles.CoverOutline:OnChanged(function(v)
             if not v then
-                pendingToken += 1
                 pcall(clearAll)
             else
-                scheduleRefresh()
+                refreshSoon()
             end
         end)
     end
 
-    if Toggles.CoverOutlineThroughWall then
-        Toggles.CoverOutlineThroughWall:OnChanged(scheduleRefresh)
-    end
-
     for _, option in ipairs({
         Options.CoverOutlineRange,
-        Options.CoverOutlineCount,
         Options.CoverOutlineOpacity,
-        Options.CoverOutlineColor,
         Options.CoverOutlineThickness,
-        Options.CoverFogOpacity,
+        Options.CoverOutlineColor,
     }) do
         if option and option.OnChanged then
-            option:OnChanged(scheduleRefresh)
+            option:OnChanged(refreshSoon)
         end
     end
 
     LP.CharacterAdded:Connect(function()
-        lastPos = nil
         pcall(clearAll)
+        refreshSoon()
     end)
 end)()
 
