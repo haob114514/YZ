@@ -6,9 +6,10 @@ local path_url = "haob114514/YZ/refs/heads/main/"
 
 local ScriptMap = {
     PlaceId = {
-        ["10769552054"] = base_url .. path_url .. "urban.lua",
+        ["10769552054"]   = base_url .. path_url .. "urban.lua",
         ["84448037861644"] = base_url .. path_url .. "urban.lua",
-        ["155615604"]   = base_url .. path_url .. "Prisonlife.lua",
+        ["155615604"]     = base_url .. path_url .. "Prisonlife.lua",
+        ["10449761463"]   = base_url .. path_url .. "thx.txt",  -- 新加的游戏
     },
     JobId = {},
 }
