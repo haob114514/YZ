@@ -21855,6 +21855,17 @@ ESP_Tab:AddLabel('透视类型')
 Toggles.ESPHighlight = ESP_Tab:AddToggle('ESPHighlight', { Text = '高亮', Default = false })
 Toggles.ESPBox = ESP_Tab:AddToggle('ESPBox', { Text = '方框', Default = false })
 Toggles.ESPName = ESP_Tab:AddToggle('ESPName', { Text = '名称', Default = false })
+Options.NameTagShadow = ESP_Tab:AddSlider('NameTagShadow', {
+    Text = '名牌阴影', Default = 60, Min = 0, Max = 100, Rounding = 0, Suffix = ' %', Compact = false,
+    Tooltip = '名牌文字周围黑色阴影的浓度；0 = 完全不要阴影，100 = 最重',
+})
+Options.NameTagStyle = WXDrop(ESP_Tab, 'NameTagStyle', {
+    Values = { '经典胶囊', '三段式（血 · 名 · 距）' },
+    Default = 1,
+    Multi = false,
+    Text = '名牌样式',
+    Tooltip = '三段式：左边血量、中间名字、右边距离；用它时「血量数值」会自动并入名牌，不再单独显示',
+})
 Toggles.ESPSkeleton = ESP_Tab:AddToggle('ESPSkeleton', { Text = '骨骼', Default = false })
 Toggles.ESPHealthBar = ESP_Tab:AddToggle('ESPHealthBar', { Text = '血条', Default = false })
 Toggles.ESPHPCounter = ESP_Tab:AddToggle('ESPHPCounter', { Text = '血量数值', Default = false })
@@ -21876,7 +21887,7 @@ local TargetESPDep = TargetESP_Tab:AddDependencyBox()
 TargetESPDep:SetupDependencies({ { Toggles.TargetESP, true } })
 
 Options.TargetESPMode = WXDrop(TargetESPDep, 'TargetESPMode', {
-    Values = { 'Client', 'Wexside', 'Призраки' },
+    Values = { 'Client', 'Wexside', 'Призраки', '扫描' },
     Default = 1,
     Multi = false,
     Text = '模式'
@@ -22165,7 +22176,21 @@ Options.TargetHUDOpacity = TargetHUD_Tab:AddSlider('TargetHUDOpacity', {
 Options.TargetHUDScale = TargetHUD_Tab:AddSlider('TargetHUDScale', {
     Text = '大小', Default = 100, Min = 60, Max = 160, Rounding = 0, Suffix = ' %', Compact = false
 })
+Toggles.TargetHUDAttach = TargetHUD_Tab:AddToggle('TargetHUDAttach', {
+    Text = '吸附到目标右侧',
+    Default = false,
+    Tooltip = '卡片跟着目标走、贴在人物右侧，并按距离自动缩放（远处不会太小、近处不会太大）；开启后手动拖动不生效',
+})
 
+Options.TargetHUDShadowDensity = TargetHUD_Tab:AddSlider('TargetHUDShadowDensity', {
+    Text = '阴影浓度', Default = 60, Min = 0, Max = 100, Rounding = 0, Suffix = ' %', Compact = false,
+    Tooltip = '卡片下方投影的浓度，0 = 几乎没有',
+})
+Toggles.TargetHUDShadowOn = TargetHUD_Tab:AddToggle('TargetHUDShadowOn', {
+    Text = '卡片阴影',
+    Default = true,
+    Tooltip = '卡片下方那层柔和投影；关掉就是纯平面卡片',
+})
 Options.TargetHUDShadow = TargetHUD_Tab:AddSlider('TargetHUDShadow', {
     Text = '阴影范围', Default = 50, Min = 0, Max = 100, Rounding = 0, Suffix = ' %', Compact = false,
     Tooltip = '数值越大，阴影往外扩得越远'
@@ -22306,27 +22331,52 @@ Options.PubgKillMsgDuration = KillMsgGroup:AddSlider('PubgKillMsgDuration', {
     Text = '停留时长（秒）', Default = 3, Min = 1, Max = 8, Rounding = 1, Compact = false
 })
 
--- 掩体绘制（只画半径内那一段，越远越淡）
-local CoverGroup = Tabs.Visuals:AddLeftGroupbox('掩体绘制')
+-- 掩体绘制（只画半径内那一段，按形状画，越远越淡）
+WXGroupCover = Tabs.Visuals:AddLeftGroupbox('掩体绘制')
 
-Toggles.CoverOutline = CoverGroup:AddToggle('CoverOutline', {
+Toggles.CoverOutline = WXGroupCover:AddToggle('CoverOutline', {
     Text = '启用掩体绘制',
     Default = false,
-    Tooltip = '以自己为圆心，只描半径内的那一截墙；圈外部分完全不画，越靠边越淡',
+    Tooltip = '以自己为圆心，只描半径内的那一截；圆外部分不画，越靠边越淡',
 })
-Options.CoverOutlineRange = CoverGroup:AddSlider('CoverOutlineRange', {
+Options.CoverOutlineRange = WXGroupCover:AddSlider('CoverOutlineRange', {
     Text = '范围（格）', Default = 60, Min = 10, Max = 400, Rounding = 0, Compact = false,
     Tooltip = '圈的半径：圆内的墙体被描边，圆外的那截不画',
 })
-Options.CoverOutlineOpacity = CoverGroup:AddSlider('CoverOutlineOpacity', {
+Toggles.CoverOutlineThroughWall = WXGroupCover:AddToggle('CoverOutlineThroughWall', {
+    Text = '绘制墙后（穿墙可见）',
+    Default = true,
+    Tooltip = '开：不判断遮挡，墙后 / 身后方向的掩体全都画出来；关：只画视线内看得见的（更省性能）',
+})
+Toggles.CoverOutlineOverlap = WXGroupCover:AddToggle('CoverOutlineOverlap', {
+    Text = '重叠绘制',
+    Default = false,
+    Tooltip = '开：同一个模型里嵌套的部件全都画（线条会重叠，树/建筑更完整）；关：只画最外层',
+})
+Toggles.CoverOutlineMesh = WXGroupCover:AddToggle('CoverOutlineMesh', {
+    Text = '网格模型按方块画',
+    Default = true,
+    Tooltip = '树 / 石头 / 建筑贴图模型这类拿不到真实形状，按包围盒画成方块；关掉就整类不画',
+})
+Toggles.CoverOutlineFarFade = WXGroupCover:AddToggle('CoverOutlineFarFade', {
+    Text = '远处变淡',
+    Default = true,
+    Tooltip = '越靠近圈的边缘越淡，到边界完全消失',
+})
+Toggles.CoverOutlineNearFade = WXGroupCover:AddToggle('CoverOutlineNearFade', {
+    Text = '近处变淡',
+    Default = false,
+    Tooltip = '越贴近自己越淡，免得脚边的线糊成一团',
+})
+Options.CoverOutlineOpacity = WXGroupCover:AddSlider('CoverOutlineOpacity', {
     Text = '描边浓度', Default = 100, Min = 10, Max = 100, Rounding = 0, Suffix = ' %', Compact = false,
     Tooltip = '指自己身边的描边浓度，越靠近圈边越淡',
 })
-Options.CoverOutlineThickness = CoverGroup:AddSlider('CoverOutlineThickness', {
+Options.CoverOutlineThickness = WXGroupCover:AddSlider('CoverOutlineThickness', {
     Text = '描边粗细', Default = 2, Min = 1, Max = 6, Rounding = 0, Compact = false,
 })
 do
-    local L = CoverGroup:AddLabel('描边颜色')
+    local L = WXGroupCover:AddLabel('描边颜色')
     L:AddColorPicker('CoverOutlineColor', { Default = Color3.fromRGB(130, 205, 255), Title = '描边颜色' })
 end
 
@@ -24537,6 +24587,47 @@ for j = 1, GHOST_COUNT do
     table.insert(ghostsLower, imgL)
 end
 
+-- 扫描模式：3D 圆环贴着身体上下扫，拖影连成筒状把人整个包住
+WXScan = { segs = 20, trail = 18, sweep = 3.6, lines = {}, used = 0 }
+
+function WXScanHide()
+    for i = 1, WXScan.used do
+        local ln = WXScan.lines[i]
+        if ln then
+            ln.Visible = false
+        end
+    end
+    WXScan.used = 0
+end
+
+function WXScanLine(i)
+    local ln = WXScan.lines[i]
+    if not ln then
+        local ok, obj = pcall(function()
+            return Drawing.new('Line')
+        end)
+        if not ok or not obj then
+            return nil
+        end
+        obj.Thickness = 1
+        obj.Transparency = 1
+        obj.ZIndex = 40
+        obj.Visible = false
+        WXScan.lines[i] = obj
+        ln = obj
+    end
+    return ln
+end
+
+-- 扫描位置：0 = 脚下，1 = 头顶；三角波往复，两端用平滑曲线软停（不是硬卡住）
+function WXScanPos(t, sweepT)
+    local cyc = sweepT * 2
+    local u = (t % cyc) / cyc
+    local tri = (u < 0.5) and (u * 2) or (2 - u * 2)
+    -- 全程匀速，只在折返点平滑过渡，没有任何停顿
+    return tri * tri * (3 - 2 * tri)
+end
+
 local function hideAllTargetESP()
     targetClientImg.Visible = false
     targetSkullImg.Visible = false
@@ -24544,6 +24635,7 @@ local function hideAllTargetESP()
         ghostsUpper[j].Visible = false
         ghostsLower[j].Visible = false
     end
+    WXScanHide()
 end
 
 local function updateTargetESP(dt)
@@ -24629,6 +24721,96 @@ local function updateTargetESP(dt)
         else
             targetSkullImg.Visible = false
         end
+
+    elseif mode == '扫描' then
+        targetClientImg.Visible = false
+        targetSkullImg.Visible = false
+        for j = 1, GHOST_COUNT do
+            ghostsUpper[j].Visible = false
+            ghostsLower[j].Visible = false
+        end
+
+        local head = targetChar:FindFirstChild('Head')
+        local hrp = targetChar:FindFirstChild('HumanoidRootPart') or rootPart
+        if not head or not hrp then
+            WXScanHide()
+            return
+        end
+
+        local yBottom = hrp.Position.Y - 2.7
+        local yTop = head.Position.Y + 0.85
+        if yTop - yBottom < 1 then
+            yTop = yBottom + 5
+        end
+        local radius = math.max(hrp.Size.X, hrp.Size.Z) * 0.5 + 0.45
+        local bright = math.clamp(brightness / 255, 0, 1)
+        local sweepT = WXScan.sweep / math.max(speed, 0.2)
+        local now = tick()
+        local used = 0
+        local alive = true
+
+        local function pushLine(fromV, toV, col, alpha, thick)
+            if not alive or alpha <= 0.02 then
+                return
+            end
+            local s1, on1 = Camera:WorldToViewportPoint(fromV)
+            local s2, on2 = Camera:WorldToViewportPoint(toV)
+            if not (on1 and on2 and s1.Z > 0 and s2.Z > 0) then
+                return
+            end
+            used = used + 1
+            local ln = WXScanLine(used)
+            if not ln then
+                alive = false
+                return
+            end
+            ln.From = Vector2.new(s1.X, s1.Y)
+            ln.To = Vector2.new(s2.X, s2.Y)
+            ln.Color = col
+            ln.Transparency = 1 - alpha
+            ln.Thickness = thick
+            ln.Visible = true
+        end
+
+        -- 拖影：一串密排的圆环，线画粗、透明度压很低，叠起来就是一条连续的渐变
+        for k = 1, WXScan.trail do
+            local p = WXScanPos(now - (k - 1) * 0.016, sweepT)
+            local y = yBottom + (yTop - yBottom) * p
+
+            local isHead = (k == 1)
+            local fade = (1 - (k - 1) / WXScan.trail) ^ 0.7
+            local alpha = isHead and (bright * 0.95) or (bright * fade * 0.2)
+            local thick = isHead and 2.6 or 3.2
+            local col = isRainbow
+                and Color3.fromHSV((tick() * 0.5 + k * 0.02) % 1, 0.75, 1)
+                or baseCol
+
+            local firstPt, prevPt = nil, nil
+            for si = 0, WXScan.segs - 1 do
+                local ang = si / WXScan.segs * math.pi * 2
+                local pt = Vector3.new(
+                    hrp.Position.X + math.cos(ang) * radius,
+                    y,
+                    hrp.Position.Z + math.sin(ang) * radius)
+                if prevPt then
+                    pushLine(prevPt, pt, col, alpha, thick)
+                else
+                    firstPt = pt
+                end
+                prevPt = pt
+            end
+            if prevPt and firstPt then
+                pushLine(prevPt, firstPt, col, alpha, thick)
+            end
+        end
+
+        for i = used + 1, WXScan.used do
+            local ln = WXScan.lines[i]
+            if ln then
+                ln.Visible = false
+            end
+        end
+        WXScan.used = used
 
     elseif mode == 'Призраки' then
         targetClientImg.Visible = false
@@ -30495,7 +30677,7 @@ local function tagCorner(obj, r)
     return c
 end
 
-function WXBuildNameTag(player)
+function WXBuildNameTagClassic(player)
     local pill = Instance.new('Frame')
     pill.Name = 'Pill'
     pill.AnchorPoint = Vector2.new(0.5, 1)
@@ -30602,6 +30784,155 @@ function WXBuildNameTag(player)
     return pill
 end
 
+-- 当前是不是「三段式」名牌
+function WXNameTagBarStyle()
+    local opt = Options and Options.NameTagStyle
+    return opt ~= nil and opt.Value == '三段式（血 · 名 · 距）'
+end
+
+-- 三段式名牌：左边血量小牌 + 中间名字 + 右边距离小牌
+function WXBuildNameTagBar(player)
+    local bar = Instance.new('Frame')
+    bar.Name = 'Pill'
+    bar.AnchorPoint = Vector2.new(0.5, 1)
+    bar.Position = UDim2.fromOffset(-10000, -10000)
+    bar.Size = UDim2.fromOffset(0, 26)
+    bar.AutomaticSize = Enum.AutomaticSize.X
+    bar.BackgroundColor3 = Color3.fromRGB(22, 24, 29)
+    bar.BackgroundTransparency = 1      -- 外层只当排布容器，不画底板
+    bar.BorderSizePixel = 0
+    bar.Visible = false
+    bar.Parent = nameTagHolder
+    tagCorner(bar, 5)
+
+    local padding = Instance.new('UIPadding')
+    padding.PaddingLeft = UDim.new(0, 4)
+    padding.PaddingRight = UDim.new(0, 4)
+    padding.PaddingTop = UDim.new(0, 3)
+    padding.PaddingBottom = UDim.new(0, 3)
+    padding.Parent = bar
+
+    local layout = Instance.new('UIListLayout')
+    layout.FillDirection = Enum.FillDirection.Horizontal
+    layout.VerticalAlignment = Enum.VerticalAlignment.Center
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    layout.Padding = UDim.new(0, 6)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Parent = bar
+
+    local function makeChip(order, name)
+        local chip = Instance.new('Frame')
+        chip.Name = name
+        chip.Size = UDim2.fromOffset(0, 20)
+        chip.AutomaticSize = Enum.AutomaticSize.X
+        chip.BackgroundColor3 = Color3.fromRGB(10, 11, 14)
+        chip.BackgroundTransparency = 0.12
+        chip.BorderSizePixel = 0
+        chip.LayoutOrder = order
+        chip.Parent = bar
+        tagCorner(chip, 3)
+
+        local pad = Instance.new('UIPadding')
+        pad.PaddingLeft = UDim.new(0, 5)
+        pad.PaddingRight = UDim.new(0, 5)
+        pad.Parent = chip
+
+        local lay = Instance.new('UIListLayout')
+        lay.FillDirection = Enum.FillDirection.Horizontal
+        lay.VerticalAlignment = Enum.VerticalAlignment.Center
+        lay.Padding = UDim.new(0, 3)
+        lay.SortOrder = Enum.SortOrder.LayoutOrder
+        lay.Parent = chip
+        return chip
+    end
+
+    -- 左：♥ + 血量数字
+    local hpChip = makeChip(1, 'HPChip')
+    local heart = Instance.new('TextLabel')
+    heart.Name = 'Heart'
+    heart.Size = UDim2.fromOffset(0, 13)
+    heart.AutomaticSize = Enum.AutomaticSize.X
+    heart.BackgroundTransparency = 1
+    heart.Font = Enum.Font.GothamBold
+    heart.TextSize = 11
+    heart.TextColor3 = Color3.fromRGB(232, 72, 72)
+    heart.TextYAlignment = Enum.TextYAlignment.Center
+    heart.Text = '♥'
+    heart.LayoutOrder = 1
+    heart.Parent = hpChip
+
+    local hpLabel = Instance.new('TextLabel')
+    hpLabel.Name = 'HP'
+    hpLabel.Size = UDim2.fromOffset(0, 14)
+    hpLabel.AutomaticSize = Enum.AutomaticSize.X
+    hpLabel.BackgroundTransparency = 1
+    hpLabel.Font = Enum.Font.GothamBold
+    hpLabel.TextSize = 11
+    hpLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    hpLabel.TextYAlignment = Enum.TextYAlignment.Center
+    hpLabel.Text = '100'
+    hpLabel.LayoutOrder = 2
+    hpLabel.Parent = hpChip
+
+    -- 中：名字（和左右一样，自己一块小牌，三块之间留缝）
+    local nameChip = makeChip(2, 'NameChip')
+    local nameLabel = Instance.new('TextLabel')
+    nameLabel.Name = 'Name'
+    nameLabel.Size = UDim2.fromOffset(0, 16)
+    nameLabel.AutomaticSize = Enum.AutomaticSize.X
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.TextSize = 13
+    nameLabel.TextColor3 = Color3.new(1, 1, 1)
+    nameLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+    nameLabel.TextStrokeTransparency = 0.6
+    nameLabel.TextXAlignment = Enum.TextXAlignment.Center
+    nameLabel.TextYAlignment = Enum.TextYAlignment.Center
+    nameLabel.Text = tostring(player.DisplayName or player.Name)
+    nameLabel.LayoutOrder = 1
+    nameLabel.Parent = nameChip
+
+    -- 右：距离
+    local distChip = makeChip(3, 'DistChip')
+    local distLabel = Instance.new('TextLabel')
+    distLabel.Name = 'Dist'
+    distLabel.Size = UDim2.fromOffset(0, 14)
+    distLabel.AutomaticSize = Enum.AutomaticSize.X
+    distLabel.BackgroundTransparency = 1
+    distLabel.Font = Enum.Font.GothamBold
+    distLabel.TextSize = 11
+    distLabel.TextColor3 = Color3.fromRGB(236, 237, 242)
+    distLabel.TextYAlignment = Enum.TextYAlignment.Center
+    distLabel.Text = '--'
+    distLabel.LayoutOrder = 1
+    distLabel.Parent = distChip
+
+    local scale = Instance.new('UIScale')
+    scale.Scale = 1
+    scale.Parent = bar
+
+    return bar
+end
+
+-- 按当前样式挑一个构建器
+function WXBuildNameTag(player)
+    if WXNameTagBarStyle() then
+        return WXBuildNameTagBar(player)
+    end
+    return WXBuildNameTagClassic(player)
+end
+
+-- 切换样式时把旧名牌全清掉，下一帧会自动按新样式重建
+if Options.NameTagStyle and Options.NameTagStyle.OnChanged then
+    Options.NameTagStyle:OnChanged(function()
+        for _, child in ipairs(nameTagHolder:GetChildren()) do
+            if child:IsA('Frame') then
+                pcall(function() child:Destroy() end)
+            end
+        end
+    end)
+end
+
 function WXUpdateNameTag(pill, player, char, color)
     local cam = workspace.CurrentCamera
     local head = char and char:FindFirstChild('Head')
@@ -30645,17 +30976,24 @@ function WXUpdateNameTag(pill, player, char, color)
 
     local dot = pill:FindFirstChild('Dot')
     local nameLabel = pill:FindFirstChild('Name')
-    local badge = pill:FindFirstChild('Badge')
-    local distLabel = badge and badge:FindFirstChild('Dist')
+    local distLabel = pill:FindFirstChild('Dist', true)
+    local hpLabel = pill:FindFirstChild('HP', true)
+    local hum = char and char:FindFirstChildOfClass('Humanoid')
 
     -- 被判定为脚本的玩家：名牌底色直接变红，方便一眼区分
     local isCheater = detectedCheaters and detectedCheaters[player] ~= nil
-    pill.BackgroundColor3 = isCheater and Color3.fromRGB(150, 26, 36) or Color3.fromRGB(24, 24, 28)
-    pill.BackgroundTransparency = isCheater and 0.02 or 0.1
-    local pillStroke = pill:FindFirstChildOfClass('UIStroke')
-    if pillStroke then
-        pillStroke.Color = isCheater and Color3.fromRGB(255, 96, 96) or Color3.new(1, 1, 1)
-        pillStroke.Transparency = isCheater and 0.45 or 0.72
+    local nameChip = pill:FindFirstChild('NameChip')
+    if nameChip then
+        -- 三段式：外层没有底板，红色直接打到名字那块小牌上
+        nameChip.BackgroundColor3 = isCheater and Color3.fromRGB(150, 26, 36) or Color3.fromRGB(10, 11, 14)
+    else
+        pill.BackgroundColor3 = isCheater and Color3.fromRGB(150, 26, 36) or Color3.fromRGB(24, 24, 28)
+        pill.BackgroundTransparency = isCheater and 0.02 or 0.1
+        local pillStroke = pill:FindFirstChildOfClass('UIStroke')
+        if pillStroke then
+            pillStroke.Color = isCheater and Color3.fromRGB(255, 96, 96) or Color3.new(1, 1, 1)
+            pillStroke.Transparency = isCheater and 0.45 or 0.72
+        end
     end
 
     if dot then
@@ -30668,8 +31006,33 @@ function WXUpdateNameTag(pill, player, char, color)
         nameLabel.TextColor3 = isCheater and Color3.fromRGB(255, 236, 236) or Color3.new(1, 1, 1)
     end
 
+    -- 阴影（文字黑色描边）强度：0 = 完全不要，100 = 最重
+    local shadowVal = math.clamp((tonumber(Options.NameTagShadow and Options.NameTagShadow.Value) or 60) / 100, 0, 1)
+    for _, lb in ipairs({ nameLabel, hpLabel, distLabel }) do
+        if lb then
+            lb.TextStrokeColor3 = Color3.new(0, 0, 0)
+            lb.TextStrokeTransparency = 1 - shadowVal
+        end
+    end
+
     if distLabel then
         distLabel.Text = string.format('%dm', math.floor(dist))
+    end
+
+    -- 三段式名牌里的血量：数字 + 按比例变色
+    if hpLabel and hum then
+        local hp = math.floor(math.max(hum.Health, 0))
+        hpLabel.Text = tostring(hp)
+        local ratio = math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1)
+        if isCheater then
+            hpLabel.TextColor3 = Color3.fromRGB(255, 236, 236)
+        elseif ratio > 0.6 then
+            hpLabel.TextColor3 = Color3.fromRGB(126, 236, 148)
+        elseif ratio > 0.3 then
+            hpLabel.TextColor3 = Color3.fromRGB(250, 206, 104)
+        else
+            hpLabel.TextColor3 = Color3.fromRGB(246, 106, 106)
+        end
     end
 end
 
@@ -30777,7 +31140,7 @@ local function createESP(player)
                         WXUpdateNameTag(nameTag, player, char, ec)
                     end
                 elseif nameTag then
-                    nameTag.Enabled = false
+                    nameTag.Visible = false
                 end
 
                 -- Skeleton ESP
@@ -30841,8 +31204,10 @@ local function createESP(player)
                     if espObjects[player] and espObjects[player].healthBarFill then espObjects[player].healthBarFill.Visible = false end
                 end
 
-                -- HP Counter
-                if Toggles.ESPHPCounter.Value then
+                -- HP Counter（三段式名牌里已经有血量数字，这里就不再单独画，免得重复）
+                local hpInsideTag = WXNameTagBarStyle and WXNameTagBarStyle()
+                    and Toggles.ESPName and Toggles.ESPName.Value
+                if Toggles.ESPHPCounter.Value and not hpInsideTag then
                     local tl2, br2 = getBoxBounds(char)
                     if tl2 and br2 then
                         if not hpCounter then
@@ -33182,6 +33547,18 @@ end
     hudRoot.Visible = false
     hudRoot.Parent = hudGui
 
+    -- 吸附模式关掉时，回到用户手动摆的位置
+    local manualPos = defaultPos
+    if Toggles.TargetHUDAttach then
+        Toggles.TargetHUDAttach:OnChanged(function(v)
+            if not v then
+                hudRoot.Position = manualPos
+                -- 恢复成滑块的固定大小
+                hudScale.Scale = math.clamp((tonumber(Options.TargetHUDScale and Options.TargetHUDScale.Value) or 100) / 100, 0.5, 2)
+            end
+        end)
+    end
+
     local hudScale = Instance.new('UIScale')
     hudScale.Scale = 1
     hudScale.Parent = hudRoot
@@ -33238,16 +33615,16 @@ end
     local SHADOW_LAYERS = 40
     local shadowLayers = {}
     for i = 1, SHADOW_LAYERS do
-        local pad = i * 0.40
+        local pad = i * 0.55
         local layer = Instance.new('Frame')
         layer.BorderSizePixel = 0
         layer.BackgroundColor3 = Color3.new(0, 0, 0)
         layer.ZIndex = 1
         layer.Size = UDim2.new(1, pad * 2, 1, pad * 2)
-        layer.Position = UDim2.fromOffset(-pad, -pad + 2)
+        layer.Position = UDim2.fromOffset(-pad, -pad + 4)
         addCorner(layer, 16 + pad * 0.8)
         layer.Parent = shadowHolder
-        local alpha = 0.024 * (1 - (i - 1) / (SHADOW_LAYERS - 1))
+        local alpha = 0.07 * (1 - (i - 1) / (SHADOW_LAYERS - 1))
         shadowLayers[i] = { Frame = layer, Base = 1 - alpha }
     end
 
@@ -33448,6 +33825,7 @@ end
                 dragStartFramePos.Y.Scale,
                 dragStartFramePos.Y.Offset + delta.Y
             )
+            manualPos = hudRoot.Position
         end
     end)
 
@@ -33558,7 +33936,7 @@ end
             cardBorder.BackgroundTransparency = 1
             edgeStroke.Color = Color3.fromRGB(64, 64, 74)
         else
-            cardStroke.Transparency = 1 - (0.9 * (1 - opacity * 0.6))
+            cardStroke.Transparency = 1      -- 去掉外圈白色描边
             cardBorder.BackgroundTransparency = 0.35
             edgeStroke.Color = Color3.fromRGB(16, 16, 20)
         end
@@ -33569,7 +33947,7 @@ end
         shadowSpreadNow = math.clamp((tonumber(Options.TargetHUDShadow and Options.TargetHUDShadow.Value) or 80) / 100, 0, 1)
         local factor = 0.55 + 0.90 * shadowSpreadNow
         for i, layer in ipairs(shadowLayers) do
-            local pad = i * 0.40 * factor
+            local pad = i * 0.55 * factor
             layer.Frame.Size = UDim2.new(1, pad * 2, 1, pad * 2)
             layer.Frame.Position = UDim2.fromOffset(-pad, -pad + 2)
             local cc = layer.Frame:FindFirstChildOfClass('UICorner')
@@ -33825,6 +34203,27 @@ end
     -- 阴影逐帧跟随卡片：位置、尺寸、缩放、淡入淡出
     local shadowConn = RunService.RenderStepped:Connect(function()
         pcall(function()
+            -- 吸附模式：贴在目标右侧，按距离自动缩放（远处不会太小、近处不会太大）
+            if Toggles.TargetHUDAttach and Toggles.TargetHUDAttach.Value then
+                local tch = displayTarget and displayTarget.Character
+                local tHead = tch and (tch:FindFirstChild('Head') or tch:FindFirstChild('HumanoidRootPart'))
+                local cam = workspace.CurrentCamera
+                if tHead and cam then
+                    local sp, onScreen = cam:WorldToViewportPoint(tHead.Position + Vector3.new(0, 0.25, 0))
+                    if onScreen and sp.Z > 0 then
+                        local dist = (cam.CFrame.Position - tHead.Position).Magnitude
+                        local distScale = math.clamp(20 / math.max(dist, 1), 0.70, 1.25)
+                        local userScale = (tonumber(Options.TargetHUDScale and Options.TargetHUDScale.Value) or 100) / 100
+                        hudScale.Scale = distScale * userScale
+
+                        local cardH = (hudRoot.Size.Y.Offset > 0 and hudRoot.Size.Y.Offset or CARD_H_BASE) * hudScale.Scale
+                        hudRoot.Position = UDim2.fromOffset(sp.X + 46 * distScale, sp.Y - cardH * 0.5)
+                    else
+                        hudRoot.Position = UDim2.fromOffset(-10000, -10000)
+                    end
+                end
+            end
+
             shadowHolder.Position = hudRoot.Position
             shadowHolder.Size = hudRoot.Size
             shadowScale.Scale = hudScale.Scale
@@ -33840,12 +34239,14 @@ end
                 alpha = hudRoot.Visible and 1 or 0
             end
 
-            shadowHolder.Visible = alpha > 0.02
+            local shadowOn = not (Toggles.TargetHUDShadowOn and Toggles.TargetHUDShadowOn.Value == false)
+            shadowHolder.Visible = shadowOn and alpha > 0.02
             edgeFrame.Visible = alpha > 0.02
             edgeStroke.Transparency = themeDarkNow and 1 or (1 - (0.65 * alpha))
             if shadowHolder.Visible then
+                local dens = math.clamp((tonumber(Options.TargetHUDShadowDensity and Options.TargetHUDShadowDensity.Value) or 60) / 100, 0, 1)
                 for _, layer in ipairs(shadowLayers) do
-                    layer.Frame.BackgroundTransparency = 1 - ((1 - layer.Base) * alpha)
+                    layer.Frame.BackgroundTransparency = 1 - ((1 - layer.Base) * alpha * dens)
                 end
             end
         end)
@@ -34998,10 +35399,10 @@ end)()
     end)
 end)()
 
--- ====================== 掩体绘制（只画圈内那一段，越远越淡） ======================
--- 做法：把每个部件的 12 条棱按「以自己为圆心、半径 = 范围」的圆做裁剪，
---       只画裁完还留在圆内的那截线；圆外的部分一根线都不画（不是把整块墙框住）。
---       没有烟雾 / 没有波纹 / 不用 Highlight 整块描边。
+-- ====================== 掩体绘制（只画圈内那一段，按形状画，越远越淡） ======================
+-- 做法：按部件真实形状（方块 / 圆柱 / 球 / 楔形）生成棱线，
+--       再把每条棱按「以自己为圆心、半径 = 范围」的圆裁剪，只画圆内那截。
+--       网格模型（树、装饰 MeshPart）形状无法还原，直接跳过，避免画成大方块。
 ; (function()
     local Workspace = game:GetService('Workspace')
 
@@ -35012,8 +35413,9 @@ end)()
         end
     end
 
-    local MAX_PARTS = 40          -- 一次最多描多少个部件（每个部件 12 条棱）
-    local BITS = { 1, 2, 4 }      -- 角落索引的位运算，用来生成 12 条棱
+    local MAX_PARTS = 80          -- 一次最多描多少个部件
+    local MAX_SEGS = 1100         -- 线条总预算，超了就不再往下画
+    local BITS = { 1, 2, 4 }
 
     local pool = {}
     local prevUsed = 0
@@ -35072,11 +35474,114 @@ end)()
         return (part.Position - pos).Magnitude
     end
 
+    -- 世界坐标下的 8 个角 + 包围盒，用来做「嵌套部件去重」和遮挡采样
+    local function partBox(part)
+        local cf, sz = part.CFrame, part.Size
+        local hs = sz * 0.5
+        local corners = {}
+        local mn, mx
+        for ci = 1, 8 do
+            local v = ci - 1
+            local p = cf:PointToWorldSpace(Vector3.new(
+                ((v % 2 == 1) and 1 or -1) * hs.X,
+                ((math.floor(v / 2) % 2 == 1) and 1 or -1) * hs.Y,
+                ((math.floor(v / 4) % 2 == 1) and 1 or -1) * hs.Z))
+            corners[ci] = p
+            if not mn then
+                mn, mx = p, p
+            else
+                mn = Vector3.new(math.min(mn.X, p.X), math.min(mn.Y, p.Y), math.min(mn.Z, p.Z))
+                mx = Vector3.new(math.max(mx.X, p.X), math.max(mx.Y, p.Y), math.max(mx.Z, p.Z))
+            end
+        end
+        return corners, mn, mx
+    end
+
+    -- 按真实形状生成棱线
+    local function buildSegments(part)
+        local cf, sz = part.CFrame, part.Size
+        local hx, hy, hz = sz.X * 0.5, sz.Y * 0.5, sz.Z * 0.5
+        local segs = {}
+        local function W(x, y, z)
+            return cf:PointToWorldSpace(Vector3.new(x, y, z))
+        end
+        local function add(a, b)
+            segs[#segs + 1] = { a, b }
+        end
+
+        local shape = nil
+        if part:IsA('Part') then
+            shape = part.Shape
+        end
+
+        if shape == Enum.PartType.Ball then
+            -- 球：三个正圆（水平 + 两个竖直）
+            local r = math.min(hx, hy, hz)
+            local N = 12
+            for i = 0, N - 1 do
+                local a1 = i / N * math.pi * 2
+                local a2 = (i + 1) / N * math.pi * 2
+                add(W(math.cos(a1) * r, 0, math.sin(a1) * r), W(math.cos(a2) * r, 0, math.sin(a2) * r))
+                add(W(math.cos(a1) * r, math.sin(a1) * r, 0), W(math.cos(a2) * r, math.sin(a2) * r, 0))
+                add(W(0, math.cos(a1) * r, math.sin(a1) * r), W(0, math.cos(a2) * r, math.sin(a2) * r))
+            end
+        elseif shape == Enum.PartType.Cylinder then
+            -- 圆柱：两端圆 + 四条母线（Roblox 圆柱轴向是本地 X）
+            local N = 12
+            for i = 0, N - 1 do
+                local a1 = i / N * math.pi * 2
+                local a2 = (i + 1) / N * math.pi * 2
+                local y1, z1 = math.cos(a1) * hy, math.sin(a1) * hz
+                local y2, z2 = math.cos(a2) * hy, math.sin(a2) * hz
+                add(W(-hx, y1, z1), W(-hx, y2, z2))
+                add(W(hx, y1, z1), W(hx, y2, z2))
+            end
+            add(W(-hx, hy, 0), W(hx, hy, 0))
+            add(W(-hx, -hy, 0), W(hx, -hy, 0))
+            add(W(-hx, 0, hz), W(hx, 0, hz))
+            add(W(-hx, 0, -hz), W(hx, 0, -hz))
+        elseif shape == Enum.PartType.Wedge or shape == Enum.PartType.CornerWedge then
+            -- 楔形：底面矩形 + 顶部一条棱，斜面从顶棱落到前下沿
+            local A = W(-hx, -hy, -hz)
+            local B = W(hx, -hy, -hz)
+            local C = W(hx, -hy, hz)
+            local D = W(-hx, -hy, hz)
+            local E = W(-hx, hy, -hz)
+            local F = W(hx, hy, -hz)
+            add(A, B); add(B, C); add(C, D); add(D, A)
+            add(A, E); add(B, F); add(E, F)
+            add(E, D); add(F, C)
+        else
+            -- 方块：12 条棱
+            local corners = {}
+            for ci = 1, 8 do
+                local v = ci - 1
+                corners[ci] = W(
+                    ((v % 2 == 1) and 1 or -1) * hx,
+                    ((math.floor(v / 2) % 2 == 1) and 1 or -1) * hy,
+                    ((math.floor(v / 4) % 2 == 1) and 1 or -1) * hz)
+            end
+            for ci = 1, 8 do
+                local v = ci - 1
+                for _, b in ipairs(BITS) do
+                    if math.floor(v / b) % 2 == 0 then
+                        add(corners[ci], corners[ci + b])
+                    end
+                end
+            end
+        end
+
+        return segs
+    end
+
     local params = OverlapParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
     params.MaxParts = 600
 
-    -- 慢扫描：挑出范围内的掩体部件，并预算好它们的 12 条棱（部件静止，扫一次就够）
+    local visParams = RaycastParams.new()
+    visParams.FilterType = Enum.RaycastFilterType.Exclude
+
+    -- 慢扫描：挑部件、去嵌套、生成棱线
     local function scan()
         local enabled = Toggles.CoverOutline and Toggles.CoverOutline.Value
         local char = LP.Character
@@ -35087,6 +35592,12 @@ end)()
         end
 
         local range = math.max(tonumber(Options.CoverOutlineRange and Options.CoverOutlineRange.Value) or 60, 5)
+
+        -- 记住上一轮的可见性，重扫时沿用，避免每次重扫都先当成「可见」而闪出一堆线条
+        local prevVis = {}
+        for _, t in ipairs(targets) do
+            prevVis[t.part] = t.visible
+        end
 
         local exclude = { char }
         if Workspace.CurrentCamera then
@@ -35106,66 +35617,158 @@ end)()
             return
         end
 
-        -- 过滤：太碎的、跨度超大的、扁平大板（地板 / 天花板）都不算掩体
-        local list = {}
+        -- 第一步：筛掉不该画的
+        local meshOK = true
+        if Toggles.CoverOutlineMesh then
+            meshOK = Toggles.CoverOutlineMesh.Value
+        end
+        local byModel = {}
         for _, part in ipairs(parts) do
-            if part:IsA('BasePart') and part.Anchored and part.Transparency < 0.95 then
+            local keep = part:IsA('BasePart')
+                and part.Anchored
+                and part.Transparency < 0.95
+
+            -- 网格模型（树、石头、装饰）拿不到真实形状，默认按包围盒画；
+            -- 关掉这个开关就整类跳过
+            if keep and not meshOK then
+                if not part:IsA('Part') or part:FindFirstChildOfClass('SpecialMesh') then
+                    keep = false
+                end
+            end
+            if keep then
                 local sz = part.Size
                 local maxSpan = math.max(sz.X, sz.Y, sz.Z)
-                local skip = false
-                if sz.Magnitude < 8 then
-                    skip = true
+                local minSpan = math.min(sz.X, sz.Y, sz.Z)
+                if maxSpan < 3 then
+                    keep = false                          -- 太小的碎块
                 elseif maxSpan > 300 then
-                    skip = true
+                    keep = false                          -- 跨度超大的部件
                 elseif sz.Y <= 2.5 and sz.X > 30 and sz.Z > 30 then
-                    skip = true
+                    keep = false                          -- 扁平大板：地板 / 天花板
+                elseif minSpan <= 1.5 and sz.Y <= 3 and maxSpan >= 25 then
+                    keep = false                          -- 横着的细长条：栏杆 / 压条 / 边饰
                 end
-                if not skip then
-                    local d = surfaceDist(part, root.Position)
-                    if d <= range then
-                        list[#list + 1] = { part = part, dist = d }
+            end
+
+            if keep then
+                local d = surfaceDist(part, root.Position)
+                if d <= range then
+                    local model = part:FindFirstAncestorOfClass('Model') or part
+                    local bucket = byModel[model]
+                    if not bucket then
+                        bucket = {}
+                        byModel[model] = bucket
                     end
+                    local sz = part.Size
+                    bucket[#bucket + 1] = {
+                        part = part,
+                        dist = d,
+                        vol = sz.X * sz.Y * sz.Z,
+                    }
                 end
             end
         end
+
+        -- 第二步：默认只留最外层（同一模型里被别的部件整个包住的内衬 / 装饰丢掉）；
+        --         打开「重叠绘制」就全部保留
+        local overlap = Toggles.CoverOutlineOverlap and Toggles.CoverOutlineOverlap.Value
+        local list = {}
+        for _, bucket in pairs(byModel) do
+            if overlap then
+                for _, item in ipairs(bucket) do
+                    list[#list + 1] = item
+                end
+            else
+                table.sort(bucket, function(a, b)
+                    return a.vol > b.vol
+                end)
+                local kept = {}
+                for _, item in ipairs(bucket) do
+                    local _, mn, mx = partBox(item.part)
+                    local inside = false
+                    for _, k in ipairs(kept) do
+                        local e = 0.5
+                        if mn.X >= k.mn.X - e and mn.Y >= k.mn.Y - e and mn.Z >= k.mn.Z - e
+                            and mx.X <= k.mx.X + e and mx.Y <= k.mx.Y + e and mx.Z <= k.mx.Z + e then
+                            inside = true
+                            break
+                        end
+                    end
+                    if not inside then
+                        kept[#kept + 1] = { mn = mn, mx = mx, item = item }
+                    end
+                end
+                for _, k in ipairs(kept) do
+                    list[#list + 1] = k.item
+                end
+            end
+        end
+
         table.sort(list, function(a, b)
             return a.dist < b.dist
         end)
 
+        -- 第三步：预算棱线
         local newTargets = {}
         for i = 1, math.min(#list, MAX_PARTS) do
             local part = list[i].part
-            local cf = part.CFrame
-            local hs = part.Size * 0.5
-            local corners = {}
-            for ci = 1, 8 do
-                local v = ci - 1
-                local sx = (v % 2 == 1) and 1 or -1
-                local sy = (math.floor(v / 2) % 2 == 1) and 1 or -1
-                local sz = (math.floor(v / 4) % 2 == 1) and 1 or -1
-                corners[ci] = cf:PointToWorldSpace(Vector3.new(sx * hs.X, sy * hs.Y, sz * hs.Z))
-            end
-
-            local edges = {}
-            for ci = 1, 8 do
-                local v = ci - 1
-                for _, b in ipairs(BITS) do
-                    if math.floor(v / b) % 2 == 0 then
-                        edges[#edges + 1] = { corners[ci], corners[ci + b] }
-                    end
-                end
-            end
-
-            newTargets[#newTargets + 1] = { edges = edges, dist = list[i].dist }
+            local corners = partBox(part)
+            newTargets[#newTargets + 1] = {
+                model = part:FindFirstAncestorOfClass('Model') or part,
+                part = part,
+                dist = list[i].dist,
+                segs = buildSegments(part),
+                center = part.Position,
+                corners = corners,
+                visible = prevVis[part] ~= false,
+            }
         end
 
         targets = newTargets
     end
 
-    -- 逐帧：把每条棱按圆裁剪，只画圆内剩下的那截
+    -- 遮挡测试：被墙挡住的掩体不画（分帧轮询，避免一次打太多射线）
+    local visCursor = 0
+    local function updateVisibility(cam)
+        local n = #targets
+        if n == 0 then
+            return
+        end
+        local origin = cam.CFrame.Position
+        for _ = 1, math.min(4, n) do
+            visCursor = visCursor % n + 1
+            local t = targets[visCursor]
+            -- 只排除这个部件本身：如果它埋在别的墙体里（同一模型的内衬），
+            -- 那些墙体依然会挡住射线，从而判成不可见
+            local ex = { t.part }
+            if LP.Character then
+                ex[#ex + 1] = LP.Character
+            end
+            visParams.FilterDescendantsInstances = ex
+            local samples = { t.center, t.corners[1], t.corners[8], t.corners[4], t.corners[6] }
+            local seen = false
+            for _, p in ipairs(samples) do
+                local dir = p - origin
+                local dist = dir.Magnitude
+                if dist > 0.5 then
+                    local hit = Workspace:Raycast(origin, dir, visParams)
+                    if not hit or hit.Distance >= dist - 0.6 then
+                        seen = true
+                        break
+                    end
+                end
+            end
+            t.visible = seen
+        end
+    end
+
+    -- 逐帧：裁剪 + 投影 + 画
     local function render()
         local enabled = Toggles.CoverOutline and Toggles.CoverOutline.Value
-        if not enabled or #targets == 0 or not drawingOK then
+        local char = LP.Character
+        local root = char and char:FindFirstChild('HumanoidRootPart')
+        local cam = Workspace.CurrentCamera
+        if not enabled or not root or not cam or #targets == 0 or not drawingOK then
             if prevUsed > 0 then
                 hideLines(1, prevUsed)
                 prevUsed = 0
@@ -35173,77 +35776,98 @@ end)()
             return
         end
 
-        local char = LP.Character
-        local root = char and char:FindFirstChild('HumanoidRootPart')
-        local cam = Workspace.CurrentCamera
-        if not root or not cam then
-            return
+        local through = Toggles.CoverOutlineThroughWall and Toggles.CoverOutlineThroughWall.Value
+        if not through then
+            updateVisibility(cam)
         end
 
         local range = math.max(tonumber(Options.CoverOutlineRange and Options.CoverOutlineRange.Value) or 60, 5)
         local opacity = math.clamp((tonumber(Options.CoverOutlineOpacity and Options.CoverOutlineOpacity.Value) or 100) / 100, 0.05, 1)
+        local farFade = true
+        if Toggles.CoverOutlineFarFade then
+            farFade = Toggles.CoverOutlineFarFade.Value
+        end
+        local nearFade = false
+        if Toggles.CoverOutlineNearFade then
+            nearFade = Toggles.CoverOutlineNearFade.Value
+        end
         local thickness = math.clamp(tonumber(Options.CoverOutlineThickness and Options.CoverOutlineThickness.Value) or 2, 1, 6)
         local color = (Options.CoverOutlineColor and Options.CoverOutlineColor.Value) or Color3.fromRGB(130, 205, 255)
 
         local cx, cz = root.Position.X, root.Position.Z
         local r2 = range * range
         local idx = 0
+        local full = false
 
         for _, t in ipairs(targets) do
-            for _, e in ipairs(t.edges) do
-                local a, b = e[1], e[2]
-                local ax, az = a.X - cx, a.Z - cz
-                local dxw, dyw, dzw = b.X - a.X, b.Y - a.Y, b.Z - a.Z
-                local bx, bz = ax + dxw, az + dzw
+            if full then
+                break
+            end
+            if through or t.visible then
+                for _, e in ipairs(t.segs) do
+                    local a, b = e[1], e[2]
+                    local ax, az = a.X - cx, a.Z - cz
+                    local dxw, dyw, dzw = b.X - a.X, b.Y - a.Y, b.Z - a.Z
 
-                -- 求线段落在圆内的参数区间 [t0, t1]
-                local t0, t1
-                local A = dxw * dxw + dzw * dzw
-                local C = ax * ax + az * az - r2
-                if A < 1e-6 then
-                    if C <= 0 then
-                        t0, t1 = 0, 1
-                    end
-                else
-                    local B = 2 * (ax * dxw + az * dzw)
-                    local disc = B * B - 4 * A * C
-                    if disc > 0 then
-                        local sd = math.sqrt(disc)
-                        t0 = (-B - sd) / (2 * A)
-                        t1 = (-B + sd) / (2 * A)
-                        if t0 < 0 then t0 = 0 end
-                        if t1 > 1 then t1 = 1 end
-                        if t1 - t0 <= 0.002 then
-                            t0 = nil
+                    local t0, t1
+                    local A = dxw * dxw + dzw * dzw
+                    local C = ax * ax + az * az - r2
+                    if A < 1e-6 then
+                        if C <= 0 then
+                            t0, t1 = 0, 1
+                        end
+                    else
+                        local B = 2 * (ax * dxw + az * dzw)
+                        local disc = B * B - 4 * A * C
+                        if disc > 0 then
+                            local sd = math.sqrt(disc)
+                            t0 = (-B - sd) / (2 * A)
+                            t1 = (-B + sd) / (2 * A)
+                            if t0 < 0 then t0 = 0 end
+                            if t1 > 1 then t1 = 1 end
+                            if t1 - t0 <= 0.002 then
+                                t0 = nil
+                            end
                         end
                     end
-                end
 
-                if t0 then
-                    local p1 = Vector3.new(a.X + dxw * t0, a.Y + dyw * t0, a.Z + dzw * t0)
-                    local p2 = Vector3.new(a.X + dxw * t1, a.Y + dyw * t1, a.Z + dzw * t1)
-
-                    local s1, v1 = cam:WorldToViewportPoint(p1)
-                    local s2, v2 = cam:WorldToViewportPoint(p2)
-                    if v1 and v2 and s1.Z > 0 and s2.Z > 0 then
-                        -- 距离渐变：用裁完这段线的中点算，越靠边越淡
-                        local mx = (p1.X + p2.X) * 0.5 - cx
-                        local mz = (p1.Z + p2.Z) * 0.5 - cz
-                        local d = math.sqrt(mx * mx + mz * mz)
-                        local alpha = opacity * (1 - math.clamp(d / range, 0, 1)) ^ 1.15
-
-                        if alpha > 0.02 then
-                            idx = idx + 1
-                            local line = getLine(idx)
-                            if not line then
-                                break
+                    if t0 then
+                        local p1 = Vector3.new(a.X + dxw * t0, a.Y + dyw * t0, a.Z + dzw * t0)
+                        local p2 = Vector3.new(a.X + dxw * t1, a.Y + dyw * t1, a.Z + dzw * t1)
+                        local s1, v1 = cam:WorldToViewportPoint(p1)
+                        local s2, v2 = cam:WorldToViewportPoint(p2)
+                        if v1 and v2 and s1.Z > 0 and s2.Z > 0 then
+                            local mx = (p1.X + p2.X) * 0.5 - cx
+                            local mz = (p1.Z + p2.Z) * 0.5 - cz
+                            local d = math.sqrt(mx * mx + mz * mz)
+                            local tt = math.clamp(d / range, 0, 1)
+                            local f = 1
+                            if farFade and nearFade then
+                                f = (4 * tt * (1 - tt)) ^ 1.15      -- 两头都淡，中间最亮
+                            elseif farFade then
+                                f = (1 - tt) ^ 1.15                 -- 越远越淡
+                            elseif nearFade then
+                                f = tt ^ 1.15                       -- 越近越淡
                             end
-                            line.From = Vector2.new(s1.X, s1.Y)
-                            line.To = Vector2.new(s2.X, s2.Y)
-                            line.Color = color
-                            line.Thickness = thickness
-                            line.Transparency = 1 - alpha
-                            line.Visible = true
+                            local alpha = opacity * f
+                            if alpha > 0.02 then
+                                idx = idx + 1
+                                if idx > MAX_SEGS then
+                                    full = true
+                                    break
+                                end
+                                local line = getLine(idx)
+                                if not line then
+                                    full = true
+                                    break
+                                end
+                                line.From = Vector2.new(s1.X, s1.Y)
+                                line.To = Vector2.new(s2.X, s2.Y)
+                                line.Color = color
+                                line.Thickness = thickness
+                                line.Transparency = 1 - alpha
+                                line.Visible = true
+                            end
                         end
                     end
                 end
@@ -35262,7 +35886,6 @@ end)()
         end)
     end
 
-    -- 零件挑选：0.2s 自适应；线条更新：隔帧（约 30fps）
     local interval = 0.2
     task.spawn(function()
         while true do
@@ -35308,9 +35931,1051 @@ end)()
         end
     end
 
+    if Toggles.CoverOutlineThroughWall then
+        Toggles.CoverOutlineThroughWall:OnChanged(function()
+            for _, t in ipairs(targets) do
+                t.visible = true
+            end
+            refreshSoon()
+        end)
+    end
+
+    if Toggles.CoverOutlineOverlap then
+        Toggles.CoverOutlineOverlap:OnChanged(refreshSoon)
+    end
+
+    if Toggles.CoverOutlineMesh then
+        Toggles.CoverOutlineMesh:OnChanged(refreshSoon)
+    end
+
     LP.CharacterAdded:Connect(function()
         pcall(clearAll)
         refreshSoon()
+    end)
+end)()
+
+-- ====================== 数据卡片（游玩时长 / 击杀 / 死亡） ======================
+-- 视觉页里的一个小卡片：左边头像，右边上行游玩时长、下行击杀与死亡。
+-- 可拖动、可缩放，默认关闭；位置会记到执行器工作区的 YZStatsPos.txt。
+; (function()
+    local PlayersService = game:GetService('Players')
+    local UIS = game:GetService('UserInputService')
+
+    local POS_FILE = 'YZStatsPos.txt'
+    local BASE_W, BASE_H = 246, 88
+
+    local startTime = os.clock()
+    local kills = 0          -- 本地估算计数（游戏没有击杀统计时才用）
+    local deaths = 0
+    local killStat = nil     -- 游戏自带的击杀统计（有就优先用它）
+
+    local gui, card, avatar, line1, line2
+    local scale = 1
+    local dragging, dragStart, startPos
+
+    local function fmtTime(sec)
+        sec = math.max(0, math.floor(sec))
+        if sec < 60 then
+            return sec .. 's'
+        elseif sec < 3600 then
+            return string.format('%dm %ds', math.floor(sec / 60), sec % 60)
+        end
+        return string.format('%dh %dm', math.floor(sec / 3600), math.floor((sec % 3600) / 60))
+    end
+
+    -- 找游戏自带的击杀统计：可以手动指定名字，也可以自动模糊匹配
+    local function findKillStat()
+        local pick = (Options.KillStatName and Options.KillStatName.Value) or '自动'
+        if pick == '本地估算' then
+            return nil
+        end
+        local ls = LP:FindFirstChild('leaderstats')
+        if not ls then
+            return nil
+        end
+
+        if pick ~= '自动' then
+            local v = ls:FindFirstChild(pick)
+            if v and (v:IsA('IntValue') or v:IsA('NumberValue')) then
+                return v
+            end
+            return nil
+        end
+
+        for _, v in ipairs(ls:GetChildren()) do
+            if v:IsA('IntValue') or v:IsA('NumberValue') then
+                local n = string.lower(v.Name)
+                if n:find('kill') or n:find('ko') or n:find('frag') or n:find('elim') or v.Name:find('击杀') then
+                    return v
+                end
+            end
+        end
+        return nil
+    end
+
+    -- 谁是离死者最近的人（用来排掉“别人杀的也算我头上”）
+    local function closestIsMe(pos)
+        local myRoot = LP.Character and LP.Character:FindFirstChild('HumanoidRootPart')
+        if not myRoot then
+            return false
+        end
+        local best, bestD = nil, math.huge
+        for _, pl in ipairs(Players:GetPlayers()) do
+            local root = pl.Character and pl.Character:FindFirstChild('HumanoidRootPart')
+            if root then
+                local d = (root.Position - pos).Magnitude
+                if d < bestD then
+                    bestD, best = d, pl
+                end
+            end
+        end
+        return best == LP
+    end
+
+    local function nearMe(pos, radius)
+        local char = LP.Character
+        local root = char and char:FindFirstChild('HumanoidRootPart')
+        if not root then
+            return false
+        end
+        return (root.Position - pos).Magnitude <= radius
+    end
+
+    -- 没有被游戏统计时的兜底：手里拿着武器、30 格内把人打掉血，且 6 秒内死亡 → 记一次击杀
+    local lastHit = {}
+
+    local function hasTool()
+        local char = LP.Character
+        if not char then
+            return false
+        end
+        for _, c in ipairs(char:GetChildren()) do
+            if c:IsA('Tool') then
+                return true
+            end
+        end
+        return false
+    end
+
+    local function watchPlayer(p)
+        if p == LP then
+            return
+        end
+        local function hook()
+            local char = p.Character
+            local hum = char and char:FindFirstChildOfClass('Humanoid')
+            if not hum then
+                return
+            end
+            local lastHealth = hum.Health
+            hum.HealthChanged:Connect(function(h)
+                if killStat then
+                    return
+                end
+                if h < lastHealth then
+                    local ok, pos = pcall(function()
+                        return hum.RootPart and hum.RootPart.Position
+                    end)
+                    if ok and pos and hasTool() and nearMe(pos, 30) then
+                        lastHit[p] = os.clock()
+                    end
+                end
+                lastHealth = h
+            end)
+            hum.Died:Connect(function()
+                if killStat then
+                    return
+                end
+                local t = lastHit[p]
+                if t and os.clock() - t <= 5 then
+                    local ok, pos = pcall(function()
+                        return hum.RootPart and hum.RootPart.Position
+                    end)
+                    -- 只有“最后打掉血 + 5 秒内死亡 + 自己是离尸体最近的人”才记一次
+                    if ok and pos and closestIsMe(pos) then
+                        kills = kills + 1
+                    end
+                end
+                lastHit[p] = nil
+            end)
+        end
+        hook()
+        p.CharacterAdded:Connect(function()
+            task.wait(0.3)
+            pcall(hook)
+        end)
+    end
+
+    local function hookSelf()
+        local char = LP.Character
+        local hum = char and char:FindFirstChildOfClass('Humanoid')
+        if not hum then
+            return
+        end
+        hum.Died:Connect(function()
+            deaths = deaths + 1
+        end)
+    end
+
+    local function updateAvatar()
+        local ok, img = pcall(function()
+            return PlayersService:GetUserThumbnailAsync(LP.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
+        end)
+        if avatar then
+            avatar.Image = (ok and img) or 'rbxasset://textures/ui/ErrorIcon.png'
+        end
+    end
+
+    local function applyLayout()
+        if not card then
+            return
+        end
+        local s = scale
+        card.Size = UDim2.fromOffset(math.floor(BASE_W * s), math.floor(BASE_H * s))
+        avatar.Size = UDim2.fromOffset(math.floor(56 * s), math.floor(56 * s))
+        avatar.Position = UDim2.fromOffset(math.floor(10 * s), math.floor(16 * s))
+        local corner = avatar:FindFirstChildOfClass('UICorner')
+        if corner then
+            corner.CornerRadius = UDim.new(0, math.floor(12 * s))
+        end
+        line1.Position = UDim2.fromOffset(math.floor(78 * s), math.floor(18 * s))
+        line1.Size = UDim2.new(1, -math.floor(88 * s), 0, math.floor(20 * s))
+        line1.TextSize = math.floor(13 * s)
+        line2.Position = UDim2.fromOffset(math.floor(78 * s), math.floor(48 * s))
+        line2.Size = UDim2.new(1, -math.floor(88 * s), 0, math.floor(22 * s))
+        line2.TextSize = math.floor(15 * s)
+    end
+
+    local function savePos()
+        if not card then
+            return
+        end
+        pcall(function()
+            writefile(POS_FILE, string.format('%d,%d', card.Position.X.Offset, card.Position.Y.Offset))
+        end)
+    end
+
+    local function loadPos()
+        local ok, raw = pcall(function()
+            if isfile and isfile(POS_FILE) then
+                return readfile(POS_FILE)
+            end
+        end)
+        if ok and type(raw) == 'string' then
+            local x, y = string.match(raw, '^%s*(-?%d+)%s*,%s*(-?%d+)%s*$')
+            if x and y then
+                return UDim2.fromOffset(tonumber(x), tonumber(y))
+            end
+        end
+        return nil
+    end
+
+    local function build()
+        if gui and gui.Parent then
+            return
+        end
+
+        gui = Instance.new('ScreenGui')
+        gui.Name = 'YZStatsHUD'
+        gui.ResetOnSpawn = false
+        gui.IgnoreGuiInset = true
+        gui.DisplayOrder = 20
+
+        local host
+        local ok, h = pcall(function()
+            return gethui and gethui()
+        end)
+        if ok and h then
+            host = h
+        else
+            host = LP:FindFirstChild('PlayerGui') or game:GetService('CoreGui')
+        end
+        gui.Parent = host
+
+        card = Instance.new('Frame')
+        card.Name = 'Card'
+        card.BackgroundColor3 = Color3.fromRGB(19, 21, 27)
+        card.BackgroundTransparency = 0.1
+        card.BorderSizePixel = 0
+        card.Active = true
+        card.Position = loadPos() or UDim2.new(0, 24, 0.5, 60)
+        card.Parent = gui
+
+        local corner = Instance.new('UICorner')
+        corner.CornerRadius = UDim.new(0, 14)
+        corner.Parent = card
+        local stroke = Instance.new('UIStroke')
+        stroke.Color = Color3.fromRGB(58, 62, 74)
+        stroke.Thickness = 1
+        stroke.Transparency = 0.25
+        stroke.Parent = card
+
+        avatar = Instance.new('ImageLabel')
+        avatar.Name = 'Avatar'
+        avatar.BackgroundColor3 = Color3.fromRGB(32, 34, 42)
+        avatar.BorderSizePixel = 0
+        avatar.ScaleType = Enum.ScaleType.Crop
+        avatar.Image = ''
+        avatar.Parent = card
+        local avatarCorner = Instance.new('UICorner')
+        avatarCorner.CornerRadius = UDim.new(0, 12)
+        avatarCorner.Parent = avatar
+
+        line1 = Instance.new('TextLabel')
+        line1.BackgroundTransparency = 1
+        line1.Font = Enum.Font.GothamMedium
+        line1.TextXAlignment = Enum.TextXAlignment.Left
+        line1.TextYAlignment = Enum.TextYAlignment.Center
+        line1.TextColor3 = Color3.fromRGB(232, 236, 244)
+        line1.RichText = true
+        line1.Text = '游玩时长  0s'
+        line1.Parent = card
+
+        line2 = Instance.new('TextLabel')
+        line2.BackgroundTransparency = 1
+        line2.Font = Enum.Font.GothamMedium
+        line2.TextXAlignment = Enum.TextXAlignment.Left
+        line2.TextYAlignment = Enum.TextYAlignment.Center
+        line2.TextColor3 = Color3.fromRGB(232, 236, 244)
+        line2.RichText = true
+        line2.Text = '击杀 0    死亡 0'
+        line2.Parent = card
+
+        card.InputBegan:Connect(function(io)
+            if io.UserInputType == Enum.UserInputType.MouseButton1 or io.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+                dragStart = io.Position
+                startPos = card.Position
+            end
+        end)
+        card.InputEnded:Connect(function(io)
+            if io.UserInputType == Enum.UserInputType.MouseButton1 or io.UserInputType == Enum.UserInputType.Touch then
+                if dragging then
+                    dragging = false
+                    savePos()
+                end
+            end
+        end)
+        UIS.InputChanged:Connect(function(io)
+            if dragging and dragStart and startPos then
+                local delta = io.Position - dragStart
+                card.Position = UDim2.new(
+                    startPos.X.Scale, startPos.X.Offset + delta.X,
+                    startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            end
+        end)
+
+        updateAvatar()
+        applyLayout()
+    end
+
+    local function refreshText()
+        if not (line1 and line2) then
+            return
+        end
+        local elapsed = os.clock() - startTime
+        line1.Text = string.format('<font color="#98a0ad">游玩时长</font>  %s', fmtTime(elapsed))
+
+        local k = kills
+        if killStat and killStat.Parent then
+            local ok, v = pcall(function()
+                return math.floor(tonumber(killStat.Value) or 0)
+            end)
+            if ok then
+                k = v
+            end
+        end
+
+        line2.Text = string.format('<font color="#98a0ad">击杀</font> %d    <font color="#98a0ad">死亡</font> %d', k, deaths)
+    end
+
+    ----------------------------------------------------------------------
+    -- 界面
+    ----------------------------------------------------------------------
+    WXGroupStats = Tabs.Visuals:AddRightGroupbox('数据卡片')
+
+    Toggles.StatsHUD = WXGroupStats:AddToggle('StatsHUD', {
+        Text = '显示数据卡片',
+        Default = false,
+        Tooltip = '显示头像 + 游玩时长 + 击杀 / 死亡；卡片可以用鼠标拖动',
+    })
+    Options.KillStatName = WXDrop(WXGroupStats, 'KillStatName', {
+        Values = { '自动', '本地估算', 'Kills', 'KOs', 'KO', '击杀', '击杀数', 'Kills（击杀）', 'Frags', 'Eliminations' },
+        Default = 1,
+        Multi = false,
+        Text = '击杀来源',
+        Tooltip = '自动 = 在 leaderstats 里找名字像击杀的项；本地估算 = 靠“打掉血 + 旁边没人抢”推算（可能偏差）；也可以直接指定统计名',
+    })
+    Options.StatsHUDScale = WXGroupStats:AddSlider('StatsHUDScale', {
+        Text = '大小', Default = 100, Min = 60, Max = 160, Rounding = 0, Suffix = ' %', Compact = false,
+    })
+    WXGroupStats:AddButton({
+        Text = '重置位置',
+        Func = function()
+            if card then
+                card.Position = UDim2.new(0, 24, 0.5, 60)
+                savePos()
+            end
+        end,
+    })
+
+    Toggles.StatsHUD:OnChanged(function(v)
+        if v then
+            pcall(build)
+            if gui then
+                gui.Enabled = true
+                pcall(refreshText)
+            end
+        elseif gui then
+            gui.Enabled = false
+        end
+    end)
+
+    Options.StatsHUDScale:OnChanged(function(v)
+        scale = math.clamp((tonumber(v) or 100) / 100, 0.6, 1.6)
+        pcall(applyLayout)
+    end)
+
+    ----------------------------------------------------------------------
+    -- 数据
+    ----------------------------------------------------------------------
+    killStat = findKillStat()
+    task.delay(3, function()
+        killStat = findKillStat()
+    end)
+    if Options.KillStatName and Options.KillStatName.OnChanged then
+        Options.KillStatName:OnChanged(function()
+            killStat = findKillStat()
+            pcall(refreshText)
+        end)
+    end
+
+    pcall(hookSelf)
+    for _, p in ipairs(PlayersService:GetPlayers()) do
+        pcall(watchPlayer, p)
+    end
+    PlayersService.PlayerAdded:Connect(function(p)
+        pcall(watchPlayer, p)
+    end)
+    LP.CharacterAdded:Connect(function()
+        task.wait(0.3)
+        pcall(hookSelf)
+        pcall(updateAvatar)
+    end)
+
+    task.spawn(function()
+        while true do
+            task.wait(0.5)
+            if Toggles.StatsHUD and Toggles.StatsHUD.Value then
+                pcall(refreshText)
+            end
+        end
+    end)
+end)()
+
+-- ====================== 人物披风（纯色布料 + 丝滑摆动 + 本地图片） ======================
+-- 身后挂一块披风：多段布料，跑动时向后飘、站着轻微摆动（类似 MC 光影/mod 的丝滑感）。
+-- 材质默认纯色；想看图案就把图片丢进执行器工作区的 YZ_HUB/cape/ 里（名字用 cape.png），
+-- 再点「刷新披风图片」即可。图片会按段数切成竖条拼起来，整张图是连贯的。
+-- 注意：客户端创建，只有你自己看得见。
+; (function()
+    local Workspace = game:GetService('Workspace')
+
+    local ROOT_DIR = 'YZ_HUB'
+    local CAPE_DIR = 'YZ_HUB/cape'
+    local ID_FILE = 'YZ_HUB/cape/cape_id.txt'
+    local IMAGE_NAMES = { 'cape.png', 'cape.jpg', 'cape.jpeg' }
+
+    local capeModel = nil
+    local segments = {}
+    local imageAsset = ''
+    local imageSource = ''
+    local pitch = 0
+    local clock = 0
+
+    local function notify(msg)
+        pcall(function()
+            Library:Notify({ Title = '披风', Description = msg, Time = 4 })
+        end)
+    end
+
+    local function normalizeId(v)
+        v = tostring(v or ''):gsub('%s+', '')
+        if v == '' then
+            return ''
+        end
+        local digits = string.match(v, '(%d+)%s*$')
+        if digits then
+            return 'rbxassetid://' .. digits
+        end
+        return v
+    end
+
+    -- 建好 YZ_HUB/cape 目录，方便用户直接往里丢图片
+    local function ensureDirs()
+        pcall(function()
+            if type(makefolder) ~= 'function' then
+                return
+            end
+            if type(isfolder) ~= 'function' or not isfolder(ROOT_DIR) then
+                makefolder(ROOT_DIR)
+            end
+            if type(isfolder) ~= 'function' or not isfolder(CAPE_DIR) then
+                makefolder(CAPE_DIR)
+            end
+            -- 老版本界面的背景图放在 YZHUB，这里也兼容一下
+            if type(isfolder) ~= 'function' or not isfolder('YZHUB/cape') then
+                pcall(makefolder, 'YZHUB/cape')
+            end
+        end)
+    end
+
+    -- 图片优先用文件夹里的本地文件，其次用 cape_id.txt 里记的贴图 ID
+    local function resolveImage()
+        for _, dir in ipairs({ CAPE_DIR, 'YZHUB/cape' }) do
+            for _, name in ipairs(IMAGE_NAMES) do
+                local path = dir .. '/' .. name
+                local ok, exists = pcall(function()
+                    return isfile and isfile(path)
+                end)
+                if ok and exists then
+                    local conv = getcustomasset or getsynasset or getasset
+                    if type(conv) == 'function' then
+                        local ok2, asset = pcall(conv, path)
+                        if ok2 and type(asset) == 'string' and #asset > 0 then
+                            return asset, path
+                        end
+                    end
+                end
+            end
+        end
+
+        local ok, raw = pcall(function()
+            if isfile and isfile(ID_FILE) then
+                return readfile(ID_FILE)
+            end
+        end)
+        if ok and type(raw) == 'string' and raw ~= '' then
+            return normalizeId(raw), ID_FILE
+        end
+
+        return '', ''
+    end
+
+    local function clearCape()
+        for _, seg in ipairs(segments) do
+            if seg and seg.Parent then
+                pcall(function() seg:Destroy() end)
+            end
+        end
+        table.clear(segments)
+        if capeModel and capeModel.Parent then
+            pcall(function() capeModel:Destroy() end)
+        end
+        capeModel = nil
+    end
+
+    -- 一段布：Part + 两面 SurfaceGui（同一条切片）
+    -- partH 比 slotH 高一点，上下段落叠着，摆动时不会裂开缝隙
+    local function makeSegment(index, total, width, slotH, partH, capeLen, color)
+        local part = Instance.new('Part')
+        part.Name = 'YZCape' .. index
+        part.Size = Vector3.new(width, partH, 0.06)
+        part.Anchored = true
+        part.CanCollide = false
+        part.CanQuery = false
+        part.CanTouch = false
+        part.CastShadow = false
+        part.Massless = true
+        part.Material = Enum.Material.SmoothPlastic
+        part.Reflectance = 0
+        part.TopSurface = Enum.SurfaceType.Smooth
+        part.BottomSurface = Enum.SurfaceType.Smooth
+        part.Color = color
+        part.Transparency = 0
+        part.Parent = capeModel
+
+        if imageAsset ~= '' then
+            for _, face in ipairs({ Enum.NormalId.Back, Enum.NormalId.Front }) do
+                local sg = Instance.new('SurfaceGui')
+                sg.Name = 'Face_' .. face.Name
+                sg.Face = face
+                sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+                sg.PixelsPerStud = 48
+                sg.LightInfluence = 0
+                sg.AlwaysOnTop = false
+                sg.Parent = part
+
+                local clip = Instance.new('Frame')
+                clip.Size = UDim2.fromScale(1, 1)
+                clip.BackgroundTransparency = 1
+                clip.ClipsDescendants = true
+                clip.Parent = sg
+
+                local img = Instance.new('ImageLabel')
+                img.Name = 'Slice'
+                img.BackgroundTransparency = 1
+                img.Image = imageAsset
+                img.ScaleType = Enum.ScaleType.Stretch
+                -- 整张图铺满整条披风长度，再靠父级裁剪只露出这一段
+                img.Size = UDim2.fromScale(1, capeLen / partH)
+                img.Position = UDim2.fromScale(0, -((index - 1) * slotH) / partH)
+                img.Parent = clip
+            end
+        end
+
+        return part
+    end
+
+    local function buildCape()
+        clearCape()
+        if not (Toggles.CapeEnabled and Toggles.CapeEnabled.Value) then
+            return
+        end
+        local char = LP.Character
+        local torso = char and (char:FindFirstChild('UpperTorso') or char:FindFirstChild('Torso'))
+        if not torso then
+            return
+        end
+
+        local silky = Toggles.CapeSilky == nil or Toggles.CapeSilky.Value
+        local total = silky and math.floor(tonumber(Options.CapeSegments and Options.CapeSegments.Value) or 6) or 1
+        total = math.clamp(total, 1, 8)
+
+        local tint = Toggles.CapeTint == nil or Toggles.CapeTint.Value
+        local color = tint and ((Options.CapeColor and Options.CapeColor.Value) or Color3.fromRGB(190, 40, 52))
+            or Color3.fromRGB(245, 245, 245)
+
+        capeModel = Instance.new('Model')
+        capeModel.Name = 'YZCape'
+        capeModel.Parent = char
+
+        local torsoWidth = math.clamp(torso.Size.X * 1.05, 1.4, 3.2)
+        local capeLen = 2.6
+        local slotH = capeLen / total
+        local partH = slotH * 1.22      -- 上下重叠 22%，摆动不裂缝
+
+        for i = 1, total do
+            segments[i] = makeSegment(i, total, torsoWidth, slotH, partH, capeLen, color)
+        end
+
+        -- 先摆到身后，避免第一帧出现在世界原点
+        local baseCF = torso.CFrame * CFrame.new(0, torso.Size.Y * 0.34, torso.Size.Z * 0.78)
+        for i, seg in ipairs(segments) do
+            seg.CFrame = baseCF * CFrame.new(0, -slotH * (i - 0.5), 0)
+        end
+    end
+
+    local function render(dt)
+        local enabled = Toggles.CapeEnabled and Toggles.CapeEnabled.Value
+        if not enabled then
+            return
+        end
+
+        local char = LP.Character
+        local torso = char and (char:FindFirstChild('UpperTorso') or char:FindFirstChild('Torso'))
+        local root = char and char:FindFirstChild('HumanoidRootPart')
+        if not torso or not root or #segments == 0 then
+            return
+        end
+
+        clock = clock + dt
+
+        local vel = root.AssemblyLinearVelocity
+        local horiz = Vector3.new(vel.X, 0, vel.Z).Magnitude
+        local falling = vel.Y < -12
+
+        local target = math.clamp(horiz / 42, 0, 1) * math.rad(62)
+        if falling then
+            target = math.max(target, math.rad(26))
+        end
+        pitch = pitch + (target - pitch) * math.clamp(dt * 7, 0, 1)
+
+        -- 背后是 +Z（角色前方是 -Z）；再往外挪一点，避免摆动时插进身体
+        local cf = torso.CFrame * CFrame.new(0, torso.Size.Y * 0.34, torso.Size.Z * 0.78)
+
+        local total = #segments
+        local slotH = segments[1].Size.Y / 1.22
+        local wobble = math.rad(1.4 + math.min(horiz, 40) * 0.07)
+        -- 后仰角摊到每一段上（累加式），整条布自然弯成弧线，而不是一整块斜板
+        local perSeg = pitch / math.max(total, 1)
+
+        for i, seg in ipairs(segments) do
+            if total > 1 then
+                local wob = (math.sin(clock * 5.2 + i * 0.75) * 0.5 + 0.5) * wobble
+                -- 角度只取负值（负 = 朝身后）：往后摆不会插进身体
+                local back = -(perSeg + math.rad(1.2) + wob)
+                local side = math.sin(clock * 3.3 + i * 0.55) * wobble * 0.35
+                cf = cf * CFrame.Angles(back, 0, side)
+            end
+            seg.CFrame = cf * CFrame.new(0, -seg.Size.Y / 2, 0)
+            cf = cf * CFrame.new(0, -slotH, 0)
+        end
+    end
+
+    ----------------------------------------------------------------------
+    -- 界面
+    ----------------------------------------------------------------------
+    ensureDirs()
+    imageAsset, imageSource = resolveImage()
+
+    WXGroupCape = Tabs.Visuals:AddLeftGroupbox('人物披风')
+
+    Toggles.CapeEnabled = WXGroupCape:AddToggle('CapeEnabled', {
+        Text = '启用披风',
+        Default = false,
+        Tooltip = '在自己背后挂一块披风（只有你自己看得见）',
+    })
+    Toggles.CapeSilky = WXGroupCape:AddToggle('CapeSilky', {
+        Text = '丝滑布料',
+        Default = true,
+        Tooltip = '开：多段布料，跑动向后飘、站着轻摆；关：一整块硬板',
+    })
+    Options.CapeSegments = WXGroupCape:AddSlider('CapeSegments', {
+        Text = '布料段数', Default = 6, Min = 3, Max = 8, Rounding = 0, Compact = false,
+        Tooltip = '段数越多摆动越细，6 段是「丝滑」和性能的平衡点',
+    })
+    Toggles.CapeTint = WXGroupCape:AddToggle('CapeTint', {
+        Text = '披风上色',
+        Default = true,
+        Tooltip = '开：用下面的颜色给布料上色；关：用默认白布',
+    })
+    do
+        local L = WXGroupCape:AddLabel('布料颜色')
+        L:AddColorPicker('CapeColor', { Default = Color3.fromRGB(190, 40, 52), Title = '披风颜色' })
+    end
+    WXGroupCape:AddButton({
+        Text = '刷新披风图片',
+        Func = function()
+            ensureDirs()
+            imageAsset, imageSource = resolveImage()
+            pcall(buildCape)
+            if imageAsset ~= '' then
+                notify('已加载披风图片：' .. imageSource)
+            else
+                notify('没找到图片，用纯色布料。把图丢进 YZ_HUB/cape/ 并命名为 cape.png 再点一次')
+            end
+        end,
+    })
+
+    Toggles.CapeEnabled:OnChanged(function(v)
+        if v then
+            pcall(buildCape)
+        else
+            pcall(clearCape)
+        end
+    end)
+
+    Toggles.CapeSilky:OnChanged(function()
+        if Toggles.CapeEnabled and Toggles.CapeEnabled.Value then
+            pcall(buildCape)
+        end
+    end)
+
+    Toggles.CapeTint:OnChanged(function()
+        if Toggles.CapeEnabled and Toggles.CapeEnabled.Value then
+            pcall(buildCape)
+        end
+    end)
+
+    Options.CapeSegments:OnChanged(function()
+        if Toggles.CapeEnabled and Toggles.CapeEnabled.Value then
+            pcall(buildCape)
+        end
+    end)
+
+    if Options.CapeColor and Options.CapeColor.OnChanged then
+        Options.CapeColor:OnChanged(function()
+            if Toggles.CapeEnabled and Toggles.CapeEnabled.Value then
+                pcall(buildCape)
+            end
+        end)
+    end
+
+    LP.CharacterAdded:Connect(function()
+        pcall(clearCape)
+        task.delay(0.6, function()
+            if Toggles.CapeEnabled and Toggles.CapeEnabled.Value then
+                pcall(buildCape)
+            end
+        end)
+    end)
+
+    RunService.RenderStepped:Connect(function(dt)
+        pcall(render, math.clamp(dt, 0, 0.1))
+    end)
+end)()
+
+-- ====================== 天气系统（下雨 / 下雪，客户端） ======================
+-- 两块贴图（雨丝、雪花）直接内嵌在脚本里：base64 → 写进 YZ_HUB/weather/ → getcustomasset
+-- 转成游戏内资产，不依赖网络也不吃审核。粒子挂在相机上方跟着走，所以走到哪下到哪。
+; (function()
+    local Workspace = game:GetService('Workspace')
+    local RunService = game:GetService('RunService')
+    local DIR = 'YZ_HUB/weather'
+
+    local RAIN_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAYAAAAkCAYAAACqqEt1AAAAtUlEQVR42o3TvQmDUBiFYSfJEimcwQ2sUtlbW6SwtLOJjYWFIGpmyAqZIAtkgNQ3X+BAXggHIrwgPODPvd/NUkpZdIiO6nOfZYI8OqmcUERnVRDK6KJKQhVdVUWoo5uqCU10Vw2hjR6qJXTRU3WEPnqpnjCk7zUQRsBImAATYQbMhAWwEFbAStgAG2EH7H+BfZR9uf1c+4N2Sewi2mW3G2W31g6DHR87cHZE7VDbY2APzs9RewO7UuODtNxUogAAAABJRU5ErkJggg=='
+    local SNOW_B64 = 'iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAABX0lEQVR42sWVsWqDYBSFNZrBSBAdSiSDiwRCcAl0EoRubi5ZO2Ry6eQTOPoM2fsEeYa8Sd/DHuGztFIILf3t8C03555zvf75tfq+t0xyT2CLhXDFcoLLb/ZvAxyMPOGLtQhgTc1D4/wkwGY6D6NIPIhYbCGmFqHx6LHvBdhMtBKh2IhEpGIvDrCnlqAJ6VlOQ6YBLsKISQeTTDyKXBSQU8vQbOlZ4fFtgMOjhjTsxBHDUlTiBBW1As2OnhAPZxowrmbNI6c0PmH2LGrxAjW1Cs2Rng0eH6saAxYkR+w1Y7rB4Cwa0YoOWmpnNAU9CR4entbn3fucjJT9lkzZYHoRr3Ch1qAp6Unx8Md3MQaM64k5ITmT1Uw7GF7FDa7UWjQVPXs8xjV9CQh4UQce+cS+O6YejN/gRq1Dc6LngEfwLwFGV2T8JRs/psb/aMavilkuu1mua+MfnFk+mbN99P+Ed1JADYKQUMVCAAAAAElFTkSuQmCC'
+
+    local FALLBACK_TEX = 'rbxasset://textures/particles/sparkles_main.dds'
+
+    local b64chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    local function b64decode(data)
+        data = string.gsub(data, '[^' .. b64chars .. '=]', '')
+        return (data:gsub('.', function(x)
+            if x == '=' then
+                return ''
+            end
+            local r, f = '', (string.find(b64chars, x, 1, true) - 1)
+            for i = 6, 1, -1 do
+                r = r .. (f % 2 ^ i - f % 2 ^ (i - 1) > 0 and '1' or '0')
+            end
+            return r
+        end):gsub('%d%d%d?%d?%d?%d?%d?%d?', function(x)
+            if #x ~= 8 then
+                return ''
+            end
+            local c = 0
+            for i = 1, 8 do
+                c = c + (string.sub(x, i, i) == '1' and 2 ^ (8 - i) or 0)
+            end
+            return string.char(c)
+        end))
+    end
+
+    local texRain, texSnow
+    local rig, rainE, snowE
+
+    -- 清掉上一次执行留下的天气实体，避免重复叠加
+    for _, obj in ipairs(Workspace:GetChildren()) do
+        if obj.Name == 'YZWeather' then
+            pcall(function() obj:Destroy() end)
+        end
+    end
+
+    local function buildTexture(name, b64)
+        local conv = getcustomasset or getsynasset or getasset
+        local path = DIR .. '/' .. name
+        pcall(function()
+            if type(writefile) == 'function' then
+                writefile(path, b64decode(b64))
+            end
+        end)
+        if type(conv) == 'function' then
+            local ok, asset = pcall(conv, path)
+            if ok and type(asset) == 'string' and #asset > 0 then
+                return asset
+            end
+        end
+        return FALLBACK_TEX
+    end
+
+    local function ensureTextures()
+        if texRain and texSnow then
+            return
+        end
+        pcall(function()
+            if type(makefolder) == 'function' then
+                if type(isfolder) ~= 'function' or not isfolder('YZ_HUB') then
+                    makefolder('YZ_HUB')
+                end
+                if type(isfolder) ~= 'function' or not isfolder(DIR) then
+                    makefolder(DIR)
+                end
+            end
+        end)
+        texRain = buildTexture('rain.png', RAIN_B64)
+        texSnow = buildTexture('snow.png', SNOW_B64)
+    end
+
+    local function ensureRig()
+        if not (texRain and texSnow) then
+            ensureTextures()
+        end
+        if rig and rig.Parent then
+            return
+        end
+
+        rig = Instance.new('Part')
+        rig.Name = 'YZWeather'
+        rig.Size = Vector3.new(240, 2, 240)
+        rig.Transparency = 1
+        rig.Anchored = true
+        rig.CanCollide = false
+        rig.CanQuery = false
+        rig.CanTouch = false
+        rig.CastShadow = false
+        rig.Massless = true
+        rig.Parent = Workspace
+
+        -- 雨：细长竖条，沿速度方向（VelocityParallel）拉成雨丝
+        rainE = Instance.new('ParticleEmitter')
+        rainE.Name = 'YZRain'
+        rainE.Texture = texRain
+        rainE.EmissionDirection = Enum.NormalId.Bottom
+        rainE.Orientation = Enum.ParticleOrientation.VelocityParallel
+        rainE.Lifetime = NumberRange.new(0.85)
+        rainE.Speed = NumberRange.new(90, 110)
+        rainE.SpreadAngle = Vector2.new(1.5, 1.5)
+        rainE.Acceleration = Vector3.new(0, -25, 0)
+        rainE.Drag = 0
+        rainE.LightInfluence = 0.15
+        rainE.LightEmission = 0.25
+        rainE.Rate = 0
+        rainE.Enabled = false
+        rainE.Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0.5),
+            NumberSequenceKeypoint.new(1, 0.4),
+        })
+        rainE.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0.5),
+            NumberSequenceKeypoint.new(0.7, 0.62),
+            NumberSequenceKeypoint.new(1, 0.85),
+        })
+        rainE.Color = ColorSequence.new(Color3.fromRGB(188, 214, 255))
+        rainE.Parent = rig
+
+        -- 雪：柔和圆点，慢慢飘、左右晃
+        snowE = Instance.new('ParticleEmitter')
+        snowE.Name = 'YZSnow'
+        snowE.Texture = texSnow
+        snowE.EmissionDirection = Enum.NormalId.Bottom
+        snowE.Lifetime = NumberRange.new(6, 9)
+        snowE.Speed = NumberRange.new(4, 7)
+        snowE.SpreadAngle = Vector2.new(12, 12)
+        snowE.Acceleration = Vector3.new(1.6, -1.4, 0.8)
+        snowE.Drag = 0.5
+        snowE.LightInfluence = 0.1
+        snowE.LightEmission = 0.15
+        snowE.RotSpeed = NumberRange.new(-45, 45)
+        snowE.Rate = 0
+        snowE.Enabled = false
+        snowE.Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0.55),
+            NumberSequenceKeypoint.new(1, 0.4),
+        })
+        snowE.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0.15),
+            NumberSequenceKeypoint.new(1, 0.55),
+        })
+        snowE.Color = ColorSequence.new(Color3.fromRGB(248, 250, 255))
+        snowE.Parent = rig
+    end
+
+    -- 掩体检测：头顶 40 格内有遮挡 → 判定为室内，暂停降水
+    local sheltered = false
+
+    local function apply()
+        local kind = Options.WeatherKind and Options.WeatherKind.Value or '关闭'
+        local rainPower = math.clamp((tonumber(Options.WeatherPower and Options.WeatherPower.Value) or 60) / 100, 0.05, 1)
+        local snowPower = math.clamp((tonumber(Options.WeatherSnowPower and Options.WeatherSnowPower.Value) or 60) / 100, 0.05, 1)
+
+        if kind == '关闭' then
+            if rainE then
+                rainE.Enabled = false
+                rainE.Rate = 0
+            end
+            if snowE then
+                snowE.Enabled = false
+                snowE.Rate = 0
+            end
+            return
+        end
+
+        ensureRig()
+        local mul = sheltered and 0 or 1
+        if kind == '下雨' then
+            rainE.Rate = math.floor(700 * rainPower) * mul
+            rainE.Enabled = true
+            snowE.Enabled = false
+            snowE.Rate = 0
+        else
+            snowE.Rate = math.floor(180 * snowPower) * mul
+            snowE.Enabled = true
+            rainE.Enabled = false
+            rainE.Rate = 0
+        end
+    end
+
+    ----------------------------------------------------------------------
+    -- 界面
+    ----------------------------------------------------------------------
+    WXGroupWeather = Tabs.Visuals:AddRightGroupbox('天气')
+
+    Options.WeatherKind = WXDrop(WXGroupWeather, 'WeatherKind', {
+        Values = { '关闭', '下雨', '下雪' },
+        Default = 1,
+        Multi = false,
+        Text = '天气',
+        Tooltip = '纯客户端效果，只有你自己看得到；粒子跟着相机走，走到哪下到哪',
+    })
+    Options.WeatherPower = WXGroupWeather:AddSlider('WeatherPower', {
+        Text = '降雨密度', Default = 55, Min = 10, Max = 100, Rounding = 0, Suffix = ' %', Compact = false,
+        Tooltip = '下雨时的雨量密度',
+    })
+    Options.WeatherSnowPower = WXGroupWeather:AddSlider('WeatherSnowPower', {
+        Text = '降雪密度', Default = 60, Min = 10, Max = 100, Rounding = 0, Suffix = ' %', Compact = false,
+        Tooltip = '下雪时的雪花密度',
+    })
+    Options.WeatherHeight = WXGroupWeather:AddSlider('WeatherHeight', {
+        Text = '降水高度（格）', Default = 26, Min = 8, Max = 80, Rounding = 0, Compact = false,
+        Tooltip = '粒子从头顶多高开始往下落；调低更像贴近的雨，调高覆盖范围更大',
+    })
+
+    if Options.WeatherKind and Options.WeatherKind.OnChanged then
+        Options.WeatherKind:OnChanged(function()
+            pcall(apply)
+        end)
+    end
+    for _, opt in ipairs({ Options.WeatherPower, Options.WeatherSnowPower, Options.WeatherHeight }) do
+        if opt and opt.OnChanged then
+            opt:OnChanged(function()
+                pcall(apply)
+            end)
+        end
+    end
+
+    RunService.RenderStepped:Connect(function()
+        if not rig or not rig.Parent then
+            return
+        end
+        local cam = Workspace.CurrentCamera
+        if not cam then
+            return
+        end
+        local h = math.clamp(tonumber(Options.WeatherHeight and Options.WeatherHeight.Value) or 26, 8, 80)
+        rig.CFrame = CFrame.new(cam.CFrame.Position + Vector3.new(0, h, 0))
+    end)
+
+    task.defer(function()
+        pcall(apply)
+    end)
+
+    -- 每 0.4 秒检查头顶有没有遮挡，进屋 / 进掩体自动停雨停雪
+    local shelterParams = RaycastParams.new()
+    shelterParams.FilterType = Enum.RaycastFilterType.Exclude
+    task.spawn(function()
+        while true do
+            task.wait(0.3)
+            local char = LP.Character
+            local root = char and char:FindFirstChild('HumanoidRootPart')
+            if root then
+                local ex = {}
+                if rig then
+                    ex[#ex + 1] = rig
+                end
+                for _, pl in ipairs(Players:GetPlayers()) do
+                    if pl.Character then
+                        ex[#ex + 1] = pl.Character
+                    end
+                end
+                shelterParams.FilterDescendantsInstances = ex
+                -- 从头顶往上 60 格：有东西挡住就算在屋里/掩体下
+                local hit = Workspace:Raycast(root.Position + Vector3.new(0, 3, 0), Vector3.new(0, 60, 0), shelterParams)
+                sheltered = (hit ~= nil)
+                pcall(apply)
+            end
+        end
     end)
 end)()
 
