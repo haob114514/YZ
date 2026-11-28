@@ -2,6 +2,7 @@ local WX_OK, WX_ERR = pcall(function()
 
 -- 重复执行时先清掉旧界面，避免叠层
 do
+	print('[WX] YZ HUB 开始注入 (build 11-28b)')
 	local hosts = {}
 	local ok, h = pcall(function() return gethui and gethui() end)
 	if ok and h then hosts[#hosts + 1] = h end
@@ -2050,10 +2051,19 @@ end
 -- 想强制使用自绘矢量图标（不走 UI 原有图标）：加载脚本前执行 _G.WX_USE_BUILTIN_TAB_ICONS = true
 local TabIconLine = 1.5
 
+-- 标签图标颜色：默认跟随主题强调色；把 _G.WXTabIconColor 设成 Color3 就用自定义颜色
+local function IconColor()
+    local Custom = rawget(_G, "WXTabIconColor")
+    if typeof(Custom) == "Color3" then
+        return Custom
+    end
+    return "AccentColor"
+end
+
 local function IconBar(Parent: GuiObject, X: number, Y: number, W: number, H: number, Rotation: number?)
     local Bar = New("Frame", {
         AnchorPoint = Vector2.new(0.5, 0.5),
-        BackgroundColor3 = "AccentColor",
+        BackgroundColor3 = IconColor(),
         BorderSizePixel = 0,
         Position = UDim2.fromScale(X, Y),
         Rotation = Rotation or 0,
@@ -2086,7 +2096,7 @@ local function IconRing(Parent: GuiObject, X: number, Y: number, Size: number, R
 
     New("UIStroke", {
         ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-        Color = "AccentColor",
+        Color = IconColor(),
         Thickness = Thickness or TabIconLine,
         Parent = Ring,
     })
@@ -2097,7 +2107,7 @@ end
 local function IconDot(Parent: GuiObject, X: number, Y: number, Size: number)
     local Dot = New("Frame", {
         AnchorPoint = Vector2.new(0.5, 0.5),
-        BackgroundColor3 = "AccentColor",
+        BackgroundColor3 = IconColor(),
         BorderSizePixel = 0,
         Position = UDim2.fromScale(X, Y),
         Size = UDim2.fromScale(Size, Size),
@@ -2129,7 +2139,7 @@ local function IconPill(Parent: GuiObject, X: number, Y: number, W: number, H: n
 
     New("UIStroke", {
         ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-        Color = "AccentColor",
+        Color = IconColor(),
         Thickness = Thickness or TabIconLine,
         Parent = Pill,
     })
@@ -2140,7 +2150,7 @@ end
 local function IconDiamond(Parent: GuiObject, X: number, Y: number, Size: number)
     local Diamond = New("Frame", {
         AnchorPoint = Vector2.new(0.5, 0.5),
-        BackgroundColor3 = "AccentColor",
+        BackgroundColor3 = IconColor(),
         BorderSizePixel = 0,
         Position = UDim2.fromScale(X, Y),
         Rotation = 45,
@@ -2159,7 +2169,7 @@ end
 local function IconSquare(Parent: GuiObject, X: number, Y: number, Size: number)
     local Square = New("Frame", {
         AnchorPoint = Vector2.new(0.5, 0.5),
-        BackgroundColor3 = "AccentColor",
+        BackgroundColor3 = IconColor(),
         BorderSizePixel = 0,
         Position = UDim2.fromScale(X, Y),
         Size = UDim2.fromScale(Size, Size),
@@ -2174,52 +2184,68 @@ local function IconSquare(Parent: GuiObject, X: number, Y: number, Size: number)
     return Square
 end
 
+-- 已生成的自绘图标框（弱引用）：改颜色时遍历它们重新上色
+local BuiltinIconFrames = setmetatable({}, { __mode = "v" })
+local BuiltinIconCount = 0
+
 local BuiltinTabIcons = {
-    -- 战斗：长剑（45° 斜置的剑身 + 护手 + 剑柄 + 柄头）
+    -- 战斗：准星（圆环 + 十字 + 中心点，仿 NL「暴力」）
     sword = function(Parent)
-        IconBar(Parent, 0.575, 0.425, 0.72, 0.078, -45)
-        IconBar(Parent, 0.335, 0.665, 0.38, 0.088, 45)
-        IconBar(Parent, 0.243, 0.757, 0.26, 0.095, -45)
-        IconDot(Parent, 0.155, 0.845, 0.105)
+        IconRing(Parent, 0.5, 0.5, 0.62, 0.5, 1.7)
+        IconBar(Parent, 0.5, 0.5, 0.30, 0.085)
+        IconBar(Parent, 0.5, 0.5, 0.30, 0.085, 90)
+        IconDot(Parent, 0.5, 0.5, 0.16)
     end,
 
-    -- 视觉：眼睛（横向眼形 + 瞳孔）
+    -- 视觉：图片框（外框 + 太阳 + 山，仿 NL「视觉」）
     eye = function(Parent)
-        IconPill(Parent, 0.5, 0.5, 0.92, 0.62)
-        IconDot(Parent, 0.5, 0.5, 0.25)
+        IconRing(Parent, 0.5, 0.5, 0.78, 0.22, 1.7)
+        IconDot(Parent, 0.33, 0.33, 0.14)
+        IconBar(Parent, 0.44, 0.64, 0.30, 0.085, -45)
+        IconBar(Parent, 0.63, 0.63, 0.24, 0.085, 45)
     end,
 
     -- 移动：四向箭头（十字 + 菱形箭头尖）
     move = function(Parent)
-        IconBar(Parent, 0.5, 0.5, 0.62, 0.082)
-        IconBar(Parent, 0.5, 0.5, 0.62, 0.082, 90)
-        IconDiamond(Parent, 0.5, 0.155, 0.13)
-        IconDiamond(Parent, 0.5, 0.845, 0.13)
-        IconDiamond(Parent, 0.155, 0.5, 0.13)
-        IconDiamond(Parent, 0.845, 0.5, 0.13)
+        IconBar(Parent, 0.5, 0.5, 0.58, 0.095)
+        IconBar(Parent, 0.5, 0.5, 0.58, 0.095, 90)
+        IconDiamond(Parent, 0.5, 0.17, 0.17)
+        IconDiamond(Parent, 0.5, 0.83, 0.17)
+        IconDiamond(Parent, 0.17, 0.5, 0.17)
+        IconDiamond(Parent, 0.83, 0.5, 0.17)
     end,
 
-    -- 杂项：四宫格（四个圆角实心方块）
+    -- 杂项：双行滑块 + 左右箭头（仿 NL「杂项」）
     package = function(Parent)
-        IconSquare(Parent, 0.33, 0.33, 0.22)
-        IconSquare(Parent, 0.67, 0.33, 0.22)
-        IconSquare(Parent, 0.33, 0.67, 0.22)
-        IconSquare(Parent, 0.67, 0.67, 0.22)
+        IconBar(Parent, 0.34, 0.33, 0.36, 0.085)
+        IconBar(Parent, 0.665, 0.255, 0.14, 0.085, 45)
+        IconBar(Parent, 0.665, 0.405, 0.14, 0.085, -45)
+        IconBar(Parent, 0.66, 0.67, 0.36, 0.085)
+        IconBar(Parent, 0.335, 0.595, 0.14, 0.085, -45)
+        IconBar(Parent, 0.335, 0.745, 0.14, 0.085, 45)
     end,
 
-    -- 界面设置：双行滑块
+    -- 界面设置：齿轮（外圈 + 中心孔 + 8 个齿）
     settings = function(Parent)
-        IconBar(Parent, 0.5, 0.35, 0.66, 0.078)
-        IconBar(Parent, 0.5, 0.65, 0.66, 0.078)
-        IconDot(Parent, 0.63, 0.35, 0.19)
-        IconDot(Parent, 0.37, 0.65, 0.19)
+        IconRing(Parent, 0.5, 0.5, 0.56, 0.5, 1.9)
+        IconRing(Parent, 0.5, 0.5, 0.26, 0.5, 1.6)
+        for i = 1, 8 do
+            local a = math.rad((i - 1) * 45)
+            IconBar(
+                Parent,
+                0.5 + math.cos(a) * 0.35,
+                0.5 + math.sin(a) * 0.35,
+                0.19,
+                0.11,
+                (i - 1) * 45
+            )
+        end
     end,
 
-    -- 信息：圆圈 + 感叹号
+    -- 信息：人物（头 + 肩）
     info = function(Parent)
-        IconRing(Parent, 0.5, 0.5, 0.82, 0.5, 1.6)
-        IconDot(Parent, 0.5, 0.31, 0.08)
-        IconBar(Parent, 0.5, 0.58, 0.085, 0.30)
+        IconDot(Parent, 0.5, 0.30, 0.30)
+        IconBar(Parent, 0.5, 0.78, 0.62, 0.32)
     end,
 
     -- 备用：准星（圆环 + 四向刻度）
@@ -2268,7 +2294,38 @@ function Library:CreateBuiltinTabIcon(Name: string, Parent: GuiObject): GuiObjec
         end
     end
 
+    BuiltinIconCount = BuiltinIconCount + 1
+    BuiltinIconFrames[BuiltinIconCount] = IconFrame
+
     return IconFrame
+end
+
+-- 给所有已生成的自绘图标重新上色；Color 传 nil 表示回到主题强调色
+function Library:SetBuiltinTabIconColor(Color)
+    rawset(_G, "WXTabIconColor", Color)
+
+    local Target = Color
+    if typeof(Target) ~= "Color3" then
+        Target = (self.Scheme and self.Scheme.AccentColor) or Color3.fromRGB(125, 85, 255)
+    end
+
+    for _, FrameObject in pairs(BuiltinIconFrames) do
+        if FrameObject and FrameObject.Parent then
+            for _, Descendant in ipairs(FrameObject:GetDescendants()) do
+                if Descendant:IsA("Frame") then
+                    if Descendant.BackgroundTransparency < 1 then
+                        pcall(function()
+                            Descendant.BackgroundColor3 = Target
+                        end)
+                    end
+                elseif Descendant:IsA("UIStroke") then
+                    pcall(function()
+                        Descendant.Color = Target
+                    end)
+                end
+            end
+        end
+    end
 end
 
 --// 兜底字形图标：连矢量图标都画不了时才用 \\--
@@ -19376,26 +19433,39 @@ local isAlive, getConfig, updateHudAmmo
 _G.YZIntroActive = true
 
 -- 看门狗：不管后面哪个模块报错，8 秒后都强制把主界面打开，避免「UI 打不开 + 视角卡住」
+_G.WXForceFinishIntro = function()
+    if _G.YZIntroActive then
+        _G.YZIntroActive = false
+        if _G.YZIntroGui then
+            pcall(function() _G.YZIntroGui:Destroy() end)
+            _G.YZIntroGui = nil
+        end
+        if _G.YZIntroBlur then
+            pcall(function() _G.YZIntroBlur:Destroy() end)
+            _G.YZIntroBlur = nil
+        end
+    end
+    if _G.YZApplyHudSettings then
+        pcall(_G.YZApplyHudSettings)
+    end
+    if Library and Library.Toggled == false then
+        Library:Toggle(true)
+    end
+end
+
 task.delay(8, function()
     pcall(function()
-        if _G.YZIntroActive then
-            _G.YZIntroActive = false
-            if _G.YZIntroGui then
-                pcall(function() _G.YZIntroGui:Destroy() end)
-                _G.YZIntroGui = nil
-            end
-            if _G.YZIntroBlur then
-                pcall(function() _G.YZIntroBlur:Destroy() end)
-                _G.YZIntroBlur = nil
-            end
+        -- 动画还没开始 = 界面还在构建（图标下载等），这时绝不能抢在动画前面把菜单弹出来
+        if _G.YZIntroActive and not _G.YZIntroStarted then
+            return
         end
-        if _G.YZApplyHudSettings then
-            pcall(_G.YZApplyHudSettings)
-        end
-        if Library and Library.Toggled == false then
-            Library:Toggle(true)
-        end
+        _G.WXForceFinishIntro()
     end)
+end)
+
+-- 兜底：万一前面某处报错导致动画根本没机会播放，20 秒后强制收尾
+task.delay(20, function()
+    pcall(_G.WXForceFinishIntro)
 end)
 
 local Window = Library:CreateWindow({
@@ -20904,13 +20974,98 @@ do
         warn('[WX] Lucide 图标模块未加载，标签页图标回退为内置矢量图标')
     end
 end
+-- ====================== 标签图标：直接用 URL 链接 ======================
+-- 把图标直链填到下面 6 行（png / jpg / webp 都行，图床直链即可）。
+-- 留空或下载失败 → 用上次缓存 → 再没有就回退内置矢量图标，绝不影响加载。
+_G.WXTabIconAsset = _G.WXTabIconAsset or {}
+;(function()
+    -- ↓↓↓ 图标直链：想换哪个改哪行，留空 = 用内置图标
+    local URLS = {
+        info     = 'https://img.remit.ee/i/f1WaqbL2t9KF',  -- 人物
+        sword    = '',                                     -- 瞄准图标：等你上传后填链接
+        eye      = 'https://img.remit.ee/i/F3KGrnXg1xtu',  -- 图片框
+        move     = '',                                     -- 跑步的人：等你上传后填链接
+        package  = 'https://img.remit.ee/i/dqL8As38udUW',  -- 双行滑块
+        settings = 'https://img.remit.ee/i/YGMjm0MDShIN',  -- 齿轮
+    }
+
+    -- 统一入口：拿到网页图就给 asset，否则回退内置图标名
+    _G.WXIconFor = function(key)
+        local asset = _G.WXTabIconAsset and _G.WXTabIconAsset[key]
+        if type(asset) == 'string' and #asset > 0 then
+            local ok, icon = pcall(function() return Library:GetCustomIcon(asset) end)
+            if ok and icon then return asset end
+        end
+        return key
+    end
+
+    local converter = getcustomasset or getsynasset or getasset
+    if type(writefile) ~= 'function' or type(converter) ~= 'function' then return end
+
+    local DIR = 'YZ_HUB/icons'
+    pcall(function()
+        if type(isfolder) == 'function' and type(makefolder) == 'function' then
+            if not isfolder('YZ_HUB') then makefolder('YZ_HUB') end
+            if not isfolder(DIR) then makefolder(DIR) end
+        end
+    end)
+
+    local function toAsset(path)
+        local ok, a = pcall(converter, path)
+        if ok and type(a) == 'string' and #a > 0 then return a end
+        return nil
+    end
+
+    local function extOf(url)
+        local clean = url:match('^[^?]+') or url
+        local e = clean:match('%.([%a%d]+)$')
+        e = e and string.lower(e) or 'png'
+        if e ~= 'png' and e ~= 'jpg' and e ~= 'jpeg' and e ~= 'webp' then e = 'png' end
+        return e
+    end
+
+    local function isImage(body)
+        if type(body) ~= 'string' or #body < 400 then return false end
+        local b1, b2, b3, b4 = body:byte(1, 4)
+        if b1 == 0x89 and b2 == 0x50 and b3 == 0x4E and b4 == 0x47 then return true end
+        if b1 == 0xFF and b2 == 0xD8 then return true end
+        if b1 == 0x52 and b2 == 0x49 and b3 == 0x46 and b4 == 0x46 then return true end
+        return false
+    end
+
+    local startClock = os.clock()
+
+    for key, url in pairs(URLS) do
+        -- 总超时 8 秒：网络不通时不能把加载卡住
+        if os.clock() - startClock > 4 then break end
+
+        if type(url) == 'string' and #url > 10 then
+            local path = DIR .. '/' .. key .. '.' .. extOf(url)
+            local ok, body = pcall(function() return game:HttpGet(url) end)
+            if ok and isImage(body) and pcall(writefile, path, body) then
+                local a = toAsset(path)
+                if a then _G.WXTabIconAsset[key] = a end
+            end
+
+            -- 下载失败就用上次的缓存
+            if not _G.WXTabIconAsset[key] and type(isfile) == 'function' then
+                local okF, has = pcall(isfile, path)
+                if okF and has then
+                    local a = toAsset(path)
+                    if a then _G.WXTabIconAsset[key] = a end
+                end
+            end
+        end
+    end
+end)()
+
 local Tabs = {
-    Info            = Window:AddTab({ Name = '信息',     Icon = 'info' }),
-    Combat          = Window:AddTab({ Name = '战斗',     Icon = 'sword' }),
-    Visuals         = Window:AddTab({ Name = '视觉',     Icon = 'eye' }),
-    Movement        = Window:AddTab({ Name = '移动',     Icon = 'move' }),
-    Misc            = Window:AddTab({ Name = '杂项',     Icon = 'package' }),
-    ['UI Settings'] = Window:AddTab({ Name = '界面设置', Icon = 'settings' }),
+    Info            = Window:AddTab({ Name = '信息',     Icon = _G.WXIconFor('info') }),
+    Combat          = Window:AddTab({ Name = '战斗',     Icon = _G.WXIconFor('sword') }),
+    Visuals         = Window:AddTab({ Name = '视觉',     Icon = _G.WXIconFor('eye') }),
+    Movement        = Window:AddTab({ Name = '移动',     Icon = _G.WXIconFor('move') }),
+    Misc            = Window:AddTab({ Name = '杂项',     Icon = _G.WXIconFor('package') }),
+    ['UI Settings'] = Window:AddTab({ Name = '界面设置', Icon = _G.WXIconFor('settings') }),
 }
 
 -- ====================== 信息页（第一个标签页，布局取自 Revenant 的信息主页） ======================
@@ -25818,8 +25973,19 @@ local isDoubleTapping = false
 -- 否则 rage 的每一发都会被钩子再复制一份（连上 fire() 内部的双击就是 3~4 倍重复包）
 local isRageFiring = false
 local oldNamecall
-oldNamecall = hookmetamethod(game, '__namecall', function(self, ...)
-    local method = getnamecallmethod()
+-- 【namecall 钩子稳健化】
+-- 部分执行器（如新版 Potassium）的 hookmetamethod 返回的是「刚装上的钩子」而不是原函数，
+-- 直接拿它当 oldNamecall 会自我递归，最终所有 namecall 都返回一个函数，
+-- 表现为 FindFirstChild/GetChildren 取到函数 → bp.ChildAdded / #Tabs:GetChildren() 报错。
+-- 对策：安装前先从元表抓原始函数；钩子里加重入保护；整体包 pcall。
+-- 【注意】整段必须包在 IIFE 里：主 chunk 的 local 已贴着 200 上限，
+-- 在外面再声明 local 会让整个脚本编译失败（表现为 line 1: attempt to call a nil value）。
+;(function()
+    local busy = false
+    local body, hook
+
+    body = function(self, ...)
+        local method = getnamecallmethod()
     if (method == 'Kick' or method == 'kick') and (self == LP or self == Players.LocalPlayer) then
         return nil
     end
@@ -25985,7 +26151,71 @@ oldNamecall = hookmetamethod(game, '__namecall', function(self, ...)
 
     if setnamecallmethod then setnamecallmethod(method) end
     return oldNamecall(self, ...)
-end)
+end
+
+    hook = function(self, ...)
+        if busy then
+            if typeof(oldNamecall) == 'function' and oldNamecall ~= hook then
+                return oldNamecall(self, ...)
+            end
+            return nil
+        end
+        busy = true
+        local results = table.pack(pcall(body, self, ...))
+        busy = false
+        if results[1] then
+            return table.unpack(results, 2, results.n)
+        end
+        if typeof(oldNamecall) == 'function' and oldNamecall ~= hook then
+            return oldNamecall(self, ...)
+        end
+        return nil
+    end
+
+    -- 安装前先抓一份原始 __namecall（用于坏了以后还原元表）
+    local rawNamecall = nil
+    pcall(function()
+        local mt = getrawmetatable and getrawmetatable(game)
+        local raw = mt and rawget(mt, '__namecall')
+        if typeof(raw) == 'function' then
+            rawNamecall = raw
+        end
+    end)
+
+    local returned = hookmetamethod(game, '__namecall', hook)
+
+    -- 优先用 hookmetamethod 返回的原函数（执行器包装过的，直接调用才正常）；
+    -- 它要是返回了新钩子，就退回安装前抓到的 raw
+    if typeof(returned) == 'function' and returned ~= hook then
+        oldNamecall = returned
+    else
+        oldNamecall = rawNamecall
+    end
+    rawset(_G, 'WXOrigNamecall', oldNamecall)
+
+    -- 【自检】装完钩子立刻做一次普通 namecall：正常必须返回 table / Instance。
+    -- 有些执行器会返回新钩子或把 raw __namecall 直调出垃圾值，那样每次 FindFirstChild
+    -- 都会拿到表/函数，整个脚本会像中邪一样报错。发现不对就立刻把元表还原。
+    local probeOK = false
+    pcall(function()
+        local kids = Players:GetChildren()
+        local bp = LP:FindFirstChild('Backpack')
+        probeOK = (typeof(kids) == 'table') and (bp == nil or typeof(bp) == 'Instance')
+    end)
+
+    if not probeOK then
+        pcall(function()
+            local mt = getrawmetatable and getrawmetatable(game)
+            if mt and typeof(rawNamecall) == 'function' then
+                if setreadonly then setreadonly(mt, false) end
+                rawset(mt, '__namecall', rawNamecall)
+                if setreadonly then setreadonly(mt, true) end
+            end
+        end)
+        oldNamecall = rawNamecall
+        warn('[WX] namecall 钩子自检失败，已还原元表（静默自瞄/双击/命中钩子暂不可用，其余功能正常）')
+    end
+end)()
 
 pcall(function()
     hookfunction(LP.Kick, function() end)
@@ -26695,10 +26925,10 @@ do
     Toggles.FireRateApplyManual:OnChanged(updateAllGunsFireRate)
 
     local bp = LP:FindFirstChild('Backpack')
-    if bp then
+    if typeof(bp) == 'Instance' then
         bp.ChildAdded:Connect(patchToolFireRate)
     end
-    if LP.Character then
+    if typeof(LP.Character) == 'Instance' then
         LP.Character.ChildAdded:Connect(patchToolFireRate)
     end
     LP.CharacterAdded:Connect(function(char)
@@ -37358,6 +37588,9 @@ end)()
     local angle = 0
     local smoothPos = nil
     local muzzleBack = 1.2
+    local muzzleBack0 = 1.2   -- 倍率 1 时的枪口前伸距离（缩放后按倍率换算）
+    local scaleParts = {}     -- 每个零件在倍率 1 下的尺寸 + 相对 Handle 的偏移
+    local appliedScale = -1   -- 上一次已应用的倍率；-1 = 强制下一帧重算
 
     local function currentTool()
         local char = LP.Character
@@ -37445,12 +37678,55 @@ end)()
                     if z < minZ then minZ = z end
                 end
             end
-            muzzleBack = math.max(0.8, math.abs(minZ) + 0.45)
+            muzzleBack0 = math.max(0.8, math.abs(minZ) + 0.45)
+            muzzleBack = muzzleBack0
         end
+
+        -- 记录每个零件在倍率 1 下的尺寸与相对 Handle 的偏移，供「武器大小」整体缩放
+        scaleParts = {}
+        if handle and handle:IsA('BasePart') then
+            scaleParts[#scaleParts + 1] = { part = handle, size = handle.Size, pos = Vector3.zero, rot = CFrame.new() }
+            for _, d in ipairs(c:GetDescendants()) do
+                if d:IsA('BasePart') and d ~= handle then
+                    local off = handle.CFrame:ToObjectSpace(d.CFrame)
+                    scaleParts[#scaleParts + 1] = {
+                        part = d,
+                        size = d.Size,
+                        pos = off.Position,
+                        rot = off - off.Position,   -- 只保留旋转部分
+                    }
+                end
+            end
+        end
+        appliedScale = -1
 
         c.Parent = Workspace
         clone = c
         lastTool = tool
+    end
+
+    -- 按倍率整体缩放：零件尺寸 × s，相对 Handle 的偏移 × s，枪口前伸也跟着缩放。
+    -- 只在倍率变化时算一次，之后每帧 PivotTo 沿用这些相对偏移，不会越缩越乱。
+    local function applyScale(s)
+        if not clone or not clone.Parent then
+            return
+        end
+        local handle = clone.PrimaryPart or clone:FindFirstChild('Handle')
+        if not handle then
+            return
+        end
+        for _, e in ipairs(scaleParts) do
+            local p = e.part
+            if p and p.Parent then
+                pcall(function()
+                    p.Size = e.size * s
+                    if p ~= handle then
+                        p.CFrame = handle.CFrame * CFrame.new(e.pos * s) * e.rot
+                    end
+                end)
+            end
+        end
+        muzzleBack = muzzleBack0 * s
     end
 
     -- 弹道起点：头顶这把枪的枪口
@@ -37478,6 +37754,10 @@ end)()
     Options.HeadWeaponSpin = WXGroupHeadWeapon:AddSlider('HeadWeaponSpin', {
         Text = '旋转速度（度/秒）', Default = 90, Min = 0, Max = 720, Rounding = 0, Compact = false,
         Tooltip = '0 = 不转，90 = 4 秒一圈，360 = 1 秒一圈',
+    })
+    Options.HeadWeaponScale = WXGroupHeadWeapon:AddSlider('HeadWeaponScale', {
+        Text = '武器大小（倍率）', Default = 1, Min = 0.3, Max = 4, Rounding = 2, Compact = false,
+        Tooltip = '1 = 原始大小；调大更显眼，调小不挡视野。枪口位置与弹道起点会跟着一起缩放',
     })
     Toggles.HeadWeaponLag = WXGroupHeadWeapon:AddToggle('HeadWeaponLag', {
         Text = '跟手惯性（延迟）',
@@ -37537,6 +37817,13 @@ end)()
         local root = char and char:FindFirstChild('HumanoidRootPart')
         if not head or not root then
             return
+        end
+
+        -- 武器大小：倍率变了才重算一次零件尺寸与相对偏移
+        local wantScale = tonumber(Options.HeadWeaponScale and Options.HeadWeaponScale.Value) or 1
+        if math.abs(wantScale - appliedScale) > 0.001 then
+            appliedScale = wantScale
+            pcall(applyScale, wantScale)
         end
 
         -- 手上隐藏（默认开）
@@ -37836,9 +38123,10 @@ end)()
         pcall(apply)
     end)
 
-    -- 每 0.4 秒检查头顶有没有遮挡，进屋 / 进掩体自动停雨停雪
+    -- 每 0.3 秒检查头顶有没有遮挡，进屋 / 进掩体自动停雨停雪
     local shelterParams = RaycastParams.new()
     shelterParams.FilterType = Enum.RaycastFilterType.Exclude
+    local wasSheltered = false
     task.spawn(function()
         while true do
             task.wait(0.3)
@@ -37858,15 +38146,41 @@ end)()
                     end
                 end
                 shelterParams.FilterDescendantsInstances = ex
-                -- 空中（飞 / 跳 / 掉）一律不算被遮挡，否则飞过屋顶就会整个停雪
+
                 local hum = char:FindFirstChildOfClass('Humanoid')
                 if hum and hum.FloorMaterial == Enum.Material.Air then
+                    -- 空中（飞 / 跳 / 掉）一律不算被遮挡，否则飞过屋顶就会整个停雪
                     sheltered = false
                 else
-                    -- 从头顶往上 60 格：有东西挡住就算在屋里/掩体下
-                    local hit = Workspace:Raycast(root.Position + Vector3.new(0, 3, 0), Vector3.new(0, 60, 0), shelterParams)
-                    sheltered = (hit ~= nil)
+                    -- 从高空往下打：命中点明显高于头顶才算真的被挡住（80 格内的天花板都能覆盖）
+                    local function covered(offset)
+                        local origin = root.Position + offset + Vector3.new(0, 80, 0)
+                        local hit = Workspace:Raycast(origin, Vector3.new(0, -80, 0), shelterParams)
+                        return hit ~= nil and hit.Position.Y > root.Position.Y + 4
+                    end
+
+                    -- 五点采样：站在大屋顶边上只压到一两点时不算完全进屋，避免边缘乱闪
+                    local hits = 0
+                    if covered(Vector3.zero) then hits = hits + 1 end
+                    if covered(Vector3.new(14, 0, 0)) then hits = hits + 1 end
+                    if covered(Vector3.new(-14, 0, 0)) then hits = hits + 1 end
+                    if covered(Vector3.new(0, 0, 14)) then hits = hits + 1 end
+                    if covered(Vector3.new(0, 0, -14)) then hits = hits + 1 end
+                    sheltered = hits >= 3
                 end
+
+                -- 刚进屋：把空中残留的雨丝 / 雪花立刻清掉，
+                -- 否则雪的生命周期有 5~8 秒，进屋后还会继续「穿透」屋顶飘一阵
+                if sheltered ~= wasSheltered then
+                    wasSheltered = sheltered
+                    if sheltered then
+                        pcall(function()
+                            if rainE then rainE:Clear() end
+                            if snowE then snowE:Clear() end
+                        end)
+                    end
+                end
+
                 pcall(apply)
             end
         end
@@ -38407,6 +38721,103 @@ end)()
         UIS.WindowFocusReleased:Connect(function()
             for _, item in ipairs(anim) do
                 item.target = 0
+            end
+        end)
+    end
+
+    ----------------------------------------------------------------------
+    -- 手机端适配：没有物理键盘
+    --   移动 = 摇杆方向（转到相机空间后点亮 W/A/S/D）
+    --   跳跃 = Humanoid 状态 Jumping / 起跳瞬间
+    --   左键 = 点屏幕（短按没拖动）；右键 = 拖屏转视角
+    ----------------------------------------------------------------------
+    if UIS.TouchEnabled then
+        local holding = {}
+        local touchActive, dragLook, touchStartAt = false, false, 0
+        local touchOnGui = false
+        local lastLook = nil
+        local jumpUntil, lmbUntil = 0, 0
+
+        local function hold(id, on)
+            on = on and true or false
+            if holding[id] == on then
+                return
+            end
+            holding[id] = on
+            if on then
+                press(id)
+            else
+                release(id)
+            end
+        end
+
+        UIS.InputBegan:Connect(function(input, gp)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                touchActive, dragLook, touchStartAt = true, false, tick()
+                touchOnGui = (gp == true)   -- 按在菜单/按钮上的点，不算「点屏幕开枪」
+                lastLook = Workspace.CurrentCamera and Workspace.CurrentCamera.CFrame.LookVector
+            end
+        end)
+
+        UIS.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch and touchActive then
+                local cam = Workspace.CurrentCamera
+                if cam then
+                    if lastLook and (cam.CFrame.LookVector - lastLook).Magnitude > 0.004 then
+                        dragLook = true
+                    end
+                    lastLook = cam.CFrame.LookVector
+                end
+            end
+        end)
+
+        UIS.InputEnded:Connect(function(input)
+            if input.UserInputType ~= Enum.UserInputType.Touch then
+                return
+            end
+            -- 短按且视角没动 = 点屏幕 = 左键
+            if not dragLook and (tick() - touchStartAt) < 0.45 then
+                lmbUntil = tick() + 0.12
+                holding['LMB'] = true
+                press('LMB')
+            end
+            touchActive, dragLook = false, false
+            lastLook = nil
+        end)
+
+        RunService.RenderStepped:Connect(function()
+            if not (Toggles.KeyDisplay and Toggles.KeyDisplay.Value) then
+                return
+            end
+            local char = LP.Character
+            local hum = char and char:FindFirstChildOfClass('Humanoid')
+            local cam = Workspace.CurrentCamera
+            if not hum or not cam then
+                return
+            end
+
+            -- 摇杆方向 → W/A/S/D（按相机朝向换算，往哪走亮哪个）
+            local md = hum.MoveDirection
+            local moving = md.Magnitude > 0.15
+            local rel = cam.CFrame:VectorToObjectSpace(md)
+            hold('W', moving and rel.Z < -0.35)
+            hold('S', moving and rel.Z > 0.35)
+            hold('A', moving and rel.X < -0.35)
+            hold('D', moving and rel.X > 0.35)
+
+            -- 跳跃：状态跳到 Jumping，或者离地后往上冲
+            local st = hum:GetState()
+            local root = char:FindFirstChild('HumanoidRootPart')
+            local vy = root and root.AssemblyLinearVelocity.Y or 0
+            if st == Enum.HumanoidStateType.Jumping or (st == Enum.HumanoidStateType.Freefall and vy > 6) then
+                jumpUntil = tick() + 0.2
+            end
+            hold('Space', tick() < jumpUntil)
+
+            -- 拖屏 = 右键；点屏 = 左键（0.12 秒脉冲）
+            hold('RMB', touchActive and dragLook)
+            if tick() >= lmbUntil and holding['LMB'] then
+                hold('LMB', false)
             end
         end)
     end
@@ -41055,6 +41466,7 @@ end
         return
     end
     _G.YZIntroDone = true
+    _G.YZIntroStarted = true   -- 告诉看门狗：动画真的开始了，可以按超时逻辑收尾了
 
     local Lighting = game:GetService('Lighting')
 
