@@ -2,7 +2,7 @@ local WX_OK, WX_ERR = pcall(function()
 
 -- 重复执行时先清掉旧界面，避免叠层
 do
-	print('[WX] YZ HUB 开始注入 (build 11-28b)')
+	print('[WX] YZ HUB 开始注入 (build 11-28q)')
 	local hosts = {}
 	local ok, h = pcall(function() return gethui and gethui() end)
 	if ok and h then hosts[#hosts + 1] = h end
@@ -19431,6 +19431,10 @@ local isAlive, getConfig, updateHudAmmo
 
 -- 注入动画在所有界面构建完成后再播放（见文件末尾），这里只先标记，让 HUD 暂时不显示
 _G.YZIntroActive = true
+-- 重置上一轮留下的标记：YZIntroDone 是全局的，不清掉的话第二次注入会直接跳过动画
+_G.YZIntroDone = false
+_G.YZIntroStarted = false
+_G.YZIntroStartTime = nil
 
 -- 看门狗：不管后面哪个模块报错，8 秒后都强制把主界面打开，避免「UI 打不开 + 视角卡住」
 _G.WXForceFinishIntro = function()
@@ -19464,8 +19468,14 @@ task.delay(8, function()
 end)
 
 -- 兜底：万一前面某处报错导致动画根本没机会播放，20 秒后强制收尾
+-- 但如果动画已经开始且还没播完（3.3 秒），让开，别中途把它掐掉
 task.delay(20, function()
-    pcall(_G.WXForceFinishIntro)
+    pcall(function()
+        if _G.YZIntroStarted and _G.YZIntroStartTime and (tick() - _G.YZIntroStartTime) < 12 then
+            return
+        end
+        _G.WXForceFinishIntro()
+    end)
 end)
 
 local Window = Library:CreateWindow({
@@ -20982,11 +20992,11 @@ _G.WXTabIconAsset = _G.WXTabIconAsset or {}
     -- ↓↓↓ 图标直链：想换哪个改哪行，留空 = 用内置图标
     local URLS = {
         info     = 'https://img.remit.ee/i/f1WaqbL2t9KF',  -- 人物
-        sword    = '',                                     -- 瞄准图标：等你上传后填链接
+        sword    = 'https://img.remit.ee/i/tuJ1RzBJRZSN',  -- 瞄准（准星）
         eye      = 'https://img.remit.ee/i/F3KGrnXg1xtu',  -- 图片框
-        move     = '',                                     -- 跑步的人：等你上传后填链接
+        move     = 'https://img.remit.ee/i/fxd6IzaBaX2J',  -- 跑步的人
         package  = 'https://img.remit.ee/i/dqL8As38udUW',  -- 双行滑块
-        settings = 'https://img.remit.ee/i/YGMjm0MDShIN',  -- 齿轮
+        settings = 'https://img.remit.ee/i/9no7PAkU2dEG',  -- 齿轮
     }
 
     -- 统一入口：拿到网页图就给 asset，否则回退内置图标名
@@ -21331,26 +21341,6 @@ Rage_Tab:AddDivider()
 Toggles.RageBotShootThroughCars = Rage_Tab:AddToggle('RageBotShootThroughCars', { Text = '穿车射击', Default = true })
 Options.RageBotCarPenetration = WXDrop(Rage_Tab, 'RageBotCarPenetration', { Text = '载具穿透模式', Values = { 'Windows & Non-Solid', 'All Car Parts' }, Default = 1 })
 Toggles.RageBotDisableInVehicle = Rage_Tab:AddToggle('RageBotDisableInVehicle', { Text = '载具内禁用', Default = true })
-Rage_Tab:AddDivider()
--- ===== 穿墙射击（Wallbang）=====
-Toggles.RageWallbang = Rage_Tab:AddToggle('RageWallbang', {
-    Text = '穿墙射击',
-    Default = false,
-    Tooltip = '无视墙体直接结算命中：逐层量出障碍厚度，只有薄墙/木门/玻璃这类才穿得过去，厚掩体打不穿'
-})
-;(function()
-    local dep = Rage_Tab:AddDependencyBox()
-    dep:SetupDependencies({ { Toggles.RageWallbang, true } })
-    Options.RageWallbangThickness = dep:AddSlider('RageWallbangThickness', {
-        Text = '最大穿墙厚度', Default = 8, Min = 1, Max = 40, Rounding = 0, Compact = false
-    })
-    Options.RageWallbangLayers = dep:AddSlider('RageWallbangLayers', {
-        Text = '最多穿透层数', Default = 2, Min = 1, Max = 5, Rounding = 0, Compact = false
-    })
-    Options.RageWallbangRange = dep:AddSlider('RageWallbangRange', {
-        Text = '穿墙生效距离', Default = 300, Min = 50, Max = 1000, Rounding = 0, Compact = false
-    })
-end)()
 Rage_Tab:AddDivider()
 Toggles.AutoDetectCheaters = Rage_Tab:AddToggle('AutoDetectCheaters', { Text = '自动检测脚本', Default = false, Tooltip = '扫描玩家的加速、飞行、传送与虚空存活行为' })
 Toggles.RageBotPrioritizeCheaters = Rage_Tab:AddToggle('RageBotPrioritizeCheaters', { Text = '优先攻击脚本', Default = false, Tooltip = '自动优先锁定已检测到的脚本' })
@@ -23482,6 +23472,8 @@ do
         if mag > 0.05 then
             -- 有方向输入：清掉悬停锁
             S.lockY = nil
+            S.lockX = nil
+            S.lockZ = nil
 
             -- 前后沿视线（带俯仰，可爬升 / 下沉），左右严格贴水平面平移
             local dir = look * mv.Z
@@ -23502,9 +23494,15 @@ do
                 root.CFrame = root.CFrame + dir.Unit * (readSpeed() * dt * mag)
             end
         else
-            -- 无输入：锁住当前高度原地悬停
-            if not S.lockY then S.lockY = root.Position.Y end
-            root.CFrame = CFrame.new(root.Position.X, S.lockY, root.Position.Z)
+            -- 无输入：原地悬停，X/Y/Z 全锁（只锁 Y 时物理会一点点把人物推走）
+            if not S.lockY then
+                S.lockY = root.Position.Y
+                S.lockX = root.Position.X
+                S.lockZ = root.Position.Z
+            end
+            -- 保住朝向：CFrame.new(x, y, z) 会把旋转重置成单位阵，人物每帧「扭一下」看着就像偏移
+            root.CFrame = CFrame.new(S.lockX or root.Position.X, S.lockY, S.lockZ or root.Position.Z)
+                * (root.CFrame - root.CFrame.Position)
         end
 
         -- 不许飞进引擎坠落销毁线：部件一被销毁就是秒死，叠加原地复活会变成死亡循环
@@ -23525,7 +23523,20 @@ do
         end
     end
 
-    local flyConn = RunService.RenderStepped:Connect(function(dt)
+    -- 绑到「相机更新之前」跑：原来挂在 RenderStepped（相机之后），
+    -- 人物先位移、相机还是上一帧的位置，高速飞行时看起来就是人物一直偏在画面一侧。
+    local FLY_BIND = 'YZHUB_PlayerFly'
+    local flyConn = {
+        Disconnect = function()
+            pcall(function()
+                RunService:UnbindFromRenderStep(FLY_BIND)
+            end)
+        end,
+    }
+    pcall(function()
+        RunService:UnbindFromRenderStep(FLY_BIND)
+    end)
+    RunService:BindToRenderStep(FLY_BIND, Enum.RenderPriority.Camera.Value - 10, function(dt)
         local ok = pcall(loop, math.clamp(dt, 0.001, 0.1))
         if not ok and S.active then
             pcall(stopFly, true)
@@ -24060,66 +24071,132 @@ local function getLagCompensatedOrigin()
     return predictedServerPos
 end
 
--- ====================== Wallbang（穿墙射击） ======================
--- 逐层穿透：从枪口朝目标打一条射线，命中障碍后从目标往回打一条量出这层障碍的厚度，
--- 厚度与层数都在限制内才继续；直到射线直接落到目标身上（说明已经穿过去了）。
--- 打到自己 / 目标 / 载具部件直接算通过（载具穿透交给 hasLineOfSight 原有逻辑）。
-function _G.WXWallbangPass(from, to, targetPlayer)
-    if not (Toggles.RageWallbang and Toggles.RageWallbang.Value) then return false end
-    if not (Toggles.RageBot and Toggles.RageBot.Value) then return false end
+-- ====================== 运动相机（镜头惯性跟随） ======================
+-- 不去动角色，只在「相机脚本算完之后」把画面 CFrame 朝目标慢慢 Lerp 过去，
+-- 于是跑动 / 转身时镜头会带一点拖尾，而不是硬贴着人物。
+;(function()
+    local ok, err = pcall(function()
+        local box = Tabs.Visuals:AddRightTabbox()
+        local Tab = box:AddTab('运动相机')
+        print('[WX] 运动相机已挂到：视觉 → 运动相机')
 
-    local dir = to - from
-    local dist = dir.Magnitude
-    if dist < 0.6 then return false end
-    local maxRange = (Options.RageWallbangRange and Options.RageWallbangRange.Value) or 300
-    if dist > maxRange then return false end
-    local maxThick = (Options.RageWallbangThickness and Options.RageWallbangThickness.Value) or 8
-    local maxLayers = math.floor((Options.RageWallbangLayers and Options.RageWallbangLayers.Value) or 2)
-    local unit = dir / dist
+        local Toggle = Tab:AddToggle('MotionCamera', {
+            Text = '启用运动相机',
+            Default = false,
+            Tooltip = '镜头弹簧跟随（和头顶武器同一路子）：跑动、转身、起跳时镜头带一点延迟地滑过去，收尾有极轻回弹',
+        })
+        Toggle:AddKeyPicker('MotionCameraBind', {
+            Default = 'None', SyncToggleState = true, Modes = { 'Toggle', 'Hold' }, Text = '运动相机',
+        })
+        Tab:AddDivider()
 
-    local ex = { LP.Character }
-    local myVeh = isInVehicle(LP)
-    if myVeh then table.insert(ex, myVeh) end
-    local tChar = targetPlayer and targetPlayer.Character
-    if tChar then table.insert(ex, tChar) end
+        local Strength = Tab:AddSlider('MotionCameraStrength', {
+            Text = '抽帧强度', Default = 55, Min = 0, Max = 100, Rounding = 0, Compact = false,
+            Tooltip = '越高相机刷新越慢（越像掉帧），0 = 每帧都刷（等于原版）',
+        })
+        local RotInertia = Tab:AddToggle('MotionCameraRot', {
+            Text = '视角也抽帧（转向）',
+            Default = false,
+            Tooltip = '关掉：只有位置定格，转向实时跟手（好瞄）；开：转视角也按同样帧率跳',
+        })
+        Tab:AddLabel('起跳、传送时会自动吸附，不会甩出很远', true)
 
-    local cursor = from
-    local total = 0
-    for _ = 1, maxLayers do
-        local remain = to - cursor
-        if remain.Magnitude < 0.6 then return true end
-        wallParams.FilterDescendantsInstances = ex
-        local hit = Workspace:Raycast(cursor, remain, wallParams)
-        if not hit then return true end
+        local RunService = game:GetService('RunService')
+        local BIND = 'YZHUB_MotionCam'
 
-        local inst = hit.Instance
-        local model = inst:FindFirstAncestorOfClass('Model')
-        if model and Players:GetPlayerFromCharacter(model) then return true end
-        -- 载具交给 hasLineOfSight 原有的「穿车射击 / 穿透模式」判定，不在这里放行
-        if isVehiclePart(inst) then return false end
+        -- 「抽帧」：相机不每帧更新，而是按住上一次采样值，攒够一个间隔才跳到新位置。
+        -- 60fps 下强度 55 ≈ 32Hz 刷新（每两帧动一次），所以画面会少掉一部分位移，
+        -- 但每次跳的幅度很小，看起来是那种轻微的卡帧/定格感。
+        local acc = 0
+        local heldPos = nil
+        local heldDir = nil
 
-        -- 回打一发量厚度：命中墙面在 from 侧，回打命中在同一堵墙的 to 侧
-        wallParams.FilterDescendantsInstances = ex
-        local back = Workspace:Raycast(to, cursor - to, wallParams)
-        local thick = maxThick + 1
-        if back and (back.Position - cursor).Magnitude <= (to - cursor).Magnitude then
-            local t = (hit.Position - back.Position).Magnitude
-            if t > 0.01 then thick = t end
+        local function snap(cam)
+            local cf = cam.CFrame
+            heldPos = cf.Position
+            heldDir = cf.LookVector
+            acc = 0
         end
-        if thick > maxThick then return false end
-        total = total + thick
-        if total > maxThick then return false end
-        cursor = hit.Position + unit * (thick + 0.5)
+
+        local function reset()
+            heldPos, heldDir = nil, nil
+            acc = 0
+        end
+
+        local function onRender(dt)
+            if not (Toggle and Toggle.Value) then
+                reset()
+                return
+            end
+            local cam = workspace.CurrentCamera
+            if not cam then
+                return
+            end
+            -- 别的脚本接管了相机（Scriptable）时不介入，免得两边抢 CFrame
+            if cam.CameraType ~= Enum.CameraType.Custom then
+                reset()
+                return
+            end
+
+            local target = cam.CFrame
+            if not heldPos then
+                snap(cam)
+                return
+            end
+            -- 传送 / 复活：位置突变直接吸附，避免镜头一路飞过去
+            if (target.Position - heldPos).Magnitude > 60 then
+                snap(cam)
+                return
+            end
+
+            local s = math.clamp((tonumber(Strength and Strength.Value) or 55) / 100, 0, 1)
+            local rate = 60 - 50 * s          -- 60Hz（不抽）→ 10Hz（抽得很明显）
+            local interval = 1 / rate
+
+            acc = acc + dt
+            if acc >= interval then
+                acc = 0                        -- 到点采样一次，然后重新计数
+                heldPos = target.Position
+                heldDir = target.LookVector
+            end
+
+            -- 转向：默认实时跟手，不参与定格；开了「视角也抽帧」才一起定格
+            local dir = (RotInertia and RotInertia.Value) and heldDir or target.LookVector
+
+            cam.CFrame = CFrame.lookAt(heldPos, heldPos + dir, target.UpVector)
+        end
+
+        pcall(function()
+            RunService:UnbindFromRenderStep(BIND)
+        end)
+        -- 绑在相机优先级之后：先让游戏把相机算好，我们再叠一层惯性
+        RunService:BindToRenderStep(BIND, Enum.RenderPriority.Camera.Value + 5, function(dt)
+            pcall(onRender, math.clamp(dt, 0.001, 0.05))
+        end)
+
+        Toggle:OnChanged(function(v)
+            if v then
+                reset()
+            end
+        end)
+        Strength:OnChanged(reset)
+        if RotInertia then RotInertia:OnChanged(reset) end
+        LP.CharacterAdded:Connect(reset)
+
+        pcall(function()
+            Library:OnUnload(function()
+                pcall(function()
+                    RunService:UnbindFromRenderStep(BIND)
+                end)
+            end)
+        end)
+    end)
+    if not ok then
+        warn('[WX] 运动相机模块创建失败，已跳过：' .. tostring(err))
     end
-    return false
-end
+end)()
 
 local function hasLineOfSight(from, to, targetPlayer)
-    -- Wallbang：开启后薄墙直接放行（厚掩体仍会被拦）
-    if _G.WXWallbangPass and _G.WXWallbangPass(from, to, targetPlayer) then
-        return true
-    end
-
     local targetChar = targetPlayer and targetPlayer.Character
     local targetInVeh, targetVeh = targetPlayer and isInVehicle(targetPlayer)
     local myInVeh, myVeh = isInVehicle(LP)
@@ -24219,6 +24296,14 @@ local rootPos = root.Position
 
     for _, player in Players:GetPlayers() do
         if IsValidTarget(player) then
+            -- 队友保护：这个开关以前只是摆设（定义在 UI 里但没人读），静默自瞄照样锁队友。
+            -- 默认开；关掉就恢复「谁都锁」。
+            local teamProtected = not (Toggles.SilentAimTeamCheck and Toggles.SilentAimTeamCheck.Value == false)
+            if teamProtected and player.Team and LP.Team
+                and (player.Team == LP.Team or (LP.Team.Name ~= '' and player.Team.Name == LP.Team.Name)) then
+                continue
+            end
+
             local char = player.Character
             local inVeh = isInVehicle(player)
             local part = (inVeh and (char:FindFirstChild('Head') or char:FindFirstChild('HumanoidRootPart')))
@@ -28121,9 +28206,7 @@ function _G.WXRagePacket.predictHitPos(part)
         displacement = displacement.Unit * 6
     end
     local predicted = pos + displacement
-    -- 穿墙射击开启时不做墙体回退：子弹本来就无视薄墙，回退反而把命中点拉到墙面上
-    local wbOn = Toggles.RageWallbang and Toggles.RageWallbang.Value
-    if displacement.Magnitude > 0.1 and not wbOn then
+    if displacement.Magnitude > 0.1 then
         -- 预测点不能穿过墙体：被挡就退回遮挡面前，保证服务端射线可达
         _G.WXRagePacket.wallParams.FilterDescendantsInstances = { char }
         local ok, hit = pcall(Workspace.Raycast, Workspace, pos, displacement, _G.WXRagePacket.wallParams)
@@ -36811,7 +36894,7 @@ end)()
         local stroke = Instance.new('UIStroke')
         stroke.Color = Color3.fromRGB(58, 62, 74)
         stroke.Thickness = 1
-        stroke.Transparency = 0.25
+        stroke.Transparency = 1   -- 不要那圈白边：完全透明，只留阴影
         stroke.Parent = card
 
         ------------------------------------------------------------------
@@ -41467,6 +41550,7 @@ end
     end
     _G.YZIntroDone = true
     _G.YZIntroStarted = true   -- 告诉看门狗：动画真的开始了，可以按超时逻辑收尾了
+    _G.YZIntroStartTime = tick()
 
     local Lighting = game:GetService('Lighting')
 
